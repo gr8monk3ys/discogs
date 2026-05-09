@@ -410,3 +410,21 @@ class CacheStore:
         if row is None or row["oldest"] is None:
             return None
         return datetime.now(UTC) - datetime.fromisoformat(row["oldest"])
+
+    def increment_llm_calls(self, n: int = 1) -> None:
+        today = datetime.now(UTC).date().isoformat()
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO _llm_call_counts(day, count) VALUES (?, ?)
+                ON CONFLICT(day) DO UPDATE SET count = count + excluded.count
+                """,
+                (today, n),
+            )
+
+    def llm_calls_today(self) -> int:
+        today = datetime.now(UTC).date().isoformat()
+        row = self.conn.execute(
+            "SELECT count FROM _llm_call_counts WHERE day = ?", (today,)
+        ).fetchone()
+        return int(row["count"]) if row else 0
