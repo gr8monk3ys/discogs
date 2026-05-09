@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from discogs.api.client import BudgetExceeded, DiscogsClient
 
@@ -26,3 +27,36 @@ def push_to_wantlist(
         raise
     except Exception as e:  # noqa: BLE001 — convert any failure to structured result
         return PushResult(release_id=release_id, ok=False, error=str(e))
+
+
+RemoveStatus = Literal["removed", "skipped", "error"]
+
+
+@dataclass(frozen=True)
+class RemoveResult:
+    release_id: int
+    status: RemoveStatus
+    error: str | None
+
+
+def remove_from_wantlist(
+    client: DiscogsClient, *, username: str, release_id: int,
+) -> RemoveResult:
+    """Remove `release_id` from `username`'s wantlist. Returns a RemoveResult.
+
+    A 404 from Discogs (release isn't wantlisted) is reported as `status="skipped"`,
+    not an error — handles the case where the user manually removed the item before
+    calling undo.
+    """
+    try:
+        user = client.call("user", username)
+        user.wantlist.remove(release_id)
+        client.charge_call(1)
+        return RemoveResult(release_id=release_id, status="removed", error=None)
+    except BudgetExceeded:
+        raise
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        if "404" in msg:
+            return RemoveResult(release_id=release_id, status="skipped", error=msg)
+        return RemoveResult(release_id=release_id, status="error", error=msg)
