@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from discogs.models import CollectionItem, Release, WantlistItem
+    from discogs.models import Artist, CollectionItem, Credit, Label, Release, WantlistItem
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 CURRENT_SCHEMA_VERSION = 1
@@ -224,3 +225,188 @@ class CacheStore:
             "SELECT count FROM _api_call_counts WHERE day = ?", (today,)
         ).fetchone()
         return int(row["count"]) if row else 0
+
+    def upsert_artist(self, artist: Artist) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO artists (id, name, profile, fetched_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    profile=excluded.profile,
+                    fetched_at=excluded.fetched_at
+                """,
+                (artist.id, artist.name, artist.profile, artist.fetched_at.isoformat()),
+            )
+
+    def get_artist(self, artist_id: int) -> Artist | None:
+        from discogs.models import Artist
+        row = self.conn.execute(
+            "SELECT * FROM artists WHERE id = ?", (artist_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Artist(
+            id=row["id"],
+            name=row["name"],
+            profile=row["profile"],
+            fetched_at=datetime.fromisoformat(row["fetched_at"]),
+        )
+
+    def artist_age(self, artist_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT fetched_at FROM artists WHERE id = ?", (artist_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
+
+    def upsert_label(self, label: Label) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO labels (id, name, parent_label, releases_count, fetched_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    parent_label=excluded.parent_label,
+                    releases_count=excluded.releases_count,
+                    fetched_at=excluded.fetched_at
+                """,
+                (
+                    label.id, label.name, label.parent_label,
+                    label.releases_count, label.fetched_at.isoformat(),
+                ),
+            )
+
+    def get_label(self, label_id: int) -> Label | None:
+        from discogs.models import Label
+        row = self.conn.execute(
+            "SELECT * FROM labels WHERE id = ?", (label_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Label(
+            id=row["id"],
+            name=row["name"],
+            parent_label=row["parent_label"],
+            releases_count=row["releases_count"],
+            fetched_at=datetime.fromisoformat(row["fetched_at"]),
+        )
+
+    def label_age(self, label_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT fetched_at FROM labels WHERE id = ?", (label_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
+
+    def replace_release_credits(self, release_id: int, credits: list[Credit]) -> None:
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM release_credits WHERE release_id = ?", (release_id,)
+            )
+            self.conn.executemany(
+                "INSERT INTO release_credits (release_id, artist_id, role) VALUES (?, ?, ?)",
+                [(c.release_id, c.artist_id, c.role) for c in credits],
+            )
+
+    def get_release_credits(self, release_id: int) -> list[Credit]:
+        from discogs.models import Credit
+        rows = self.conn.execute(
+            "SELECT release_id, artist_id, role FROM release_credits WHERE release_id = ?",
+            (release_id,),
+        )
+        return [
+            Credit(release_id=r["release_id"], artist_id=r["artist_id"], role=r["role"])
+            for r in rows
+        ]
+
+    def replace_release_labels(
+        self, release_id: int, labels: list[tuple[int, str | None]]
+    ) -> None:
+        """labels = list of (label_id, catalog_number)."""
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM release_labels WHERE release_id = ?", (release_id,)
+            )
+            self.conn.executemany(
+                "INSERT INTO release_labels (release_id, label_id, catalog_number) "
+                "VALUES (?, ?, ?)",
+                [(release_id, lid, cat) for lid, cat in labels],
+            )
+
+    def get_release_label_ids(self, release_id: int) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT label_id FROM release_labels WHERE release_id = ?", (release_id,)
+        )
+        return [int(r["label_id"]) for r in rows]
+
+    def start_run(self, args: dict[str, object]) -> tuple[str, str]:
+        """Insert a new row in `runs`, return (uuid, display_id).
+
+        display_id is YYYY-MM-DD-HHMMSS in UTC and serves as the human handle
+        used by `discogs apply <run-id>` (Phase 4).
+        """
+        run_id = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        display_id = now.strftime("%Y-%m-%d-%H%M%S")
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO runs (id, display_id, started_at, args_json) VALUES (?, ?, ?, ?)",
+                (run_id, display_id, now.isoformat(), json.dumps(args)),
+            )
+        return run_id, display_id
+
+    def finish_run(self, run_id: str, summary: dict[str, object]) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE runs SET finished_at = ?, summary_json = ? WHERE id = ?",
+                (datetime.now(UTC).isoformat(), json.dumps(summary), run_id),
+            )
+
+    def record_recommendation(
+        self, run_id: str, release_id: int, score: float
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO recommendation_history (release_id, run_id, score) VALUES (?, ?, ?)",
+                (release_id, run_id, score),
+            )
+
+    def previously_recommended_release_ids(self) -> set[int]:
+        return {
+            int(r["release_id"])
+            for r in self.conn.execute("SELECT DISTINCT release_id FROM recommendation_history")
+        }
+
+    def replace_artist_top_releases(self, artist_id: int, release_ids: list[int]) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM artist_top_releases WHERE artist_id = ?", (artist_id,)
+            )
+            self.conn.executemany(
+                "INSERT INTO artist_top_releases (artist_id, release_id, rank, fetched_at) "
+                "VALUES (?, ?, ?, ?)",
+                [(artist_id, rid, rank, now) for rank, rid in enumerate(release_ids)],
+            )
+
+    def get_artist_top_release_ids(self, artist_id: int) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT release_id FROM artist_top_releases "
+            "WHERE artist_id = ? ORDER BY rank ASC",
+            (artist_id,),
+        )
+        return [int(r["release_id"]) for r in rows]
+
+    def artist_top_releases_age(self, artist_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT MIN(fetched_at) AS oldest FROM artist_top_releases WHERE artist_id = ?",
+            (artist_id,),
+        ).fetchone()
+        if row is None or row["oldest"] is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["oldest"])
