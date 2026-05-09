@@ -31,3 +31,37 @@ def _artist_from_raw(raw: Any) -> Artist:
         profile=getattr(raw, "profile", None) or None,
         fetched_at=datetime.now(UTC),
     )
+
+
+ARTIST_TOP_RELEASES_TTL = timedelta(days=30)
+
+
+def fetch_artist_releases(
+    client: DiscogsClient, store: CacheStore, artist_id: int, *, top_k: int = 25,
+    page_size: int = 50,
+) -> list[int]:
+    """Return up to `top_k` release IDs for `artist_id` from page 1 of their discography.
+
+    Uses the `artist_top_releases` cache (30d TTL). On miss, paginates page 1 only
+    (capped at `page_size` items), filters to type='release', takes the first `top_k`,
+    persists, returns.
+    """
+    age = store.artist_top_releases_age(artist_id)
+    if age is not None and age < ARTIST_TOP_RELEASES_TTL:
+        cached = store.get_artist_top_release_ids(artist_id)
+        if cached:
+            return cached[:top_k]
+
+    raw = client.call("artist", artist_id)
+    rids: list[int] = []
+    for i, ref in enumerate(raw.releases):
+        if i >= page_size:
+            break
+        if getattr(ref, "type", "release") != "release":
+            continue
+        rids.append(int(ref.id))
+        if len(rids) >= top_k:
+            break
+
+    store.replace_artist_top_releases(artist_id, rids)
+    return rids
