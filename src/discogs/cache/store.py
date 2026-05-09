@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -342,3 +343,41 @@ class CacheStore:
             "SELECT label_id FROM release_labels WHERE release_id = ?", (release_id,)
         )
         return [int(r["label_id"]) for r in rows]
+
+    def start_run(self, args: dict[str, object]) -> tuple[str, str]:
+        """Insert a new row in `runs`, return (uuid, display_id).
+
+        display_id is YYYY-MM-DD-HHMM in UTC and serves as the human handle
+        used by `discogs apply <run-id>` (Phase 4).
+        """
+        run_id = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        display_id = now.strftime("%Y-%m-%d-%H%M")
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO runs (id, display_id, started_at, args_json) VALUES (?, ?, ?, ?)",
+                (run_id, display_id, now.isoformat(), json.dumps(args)),
+            )
+        return run_id, display_id
+
+    def finish_run(self, run_id: str, summary: dict[str, object]) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE runs SET finished_at = ?, summary_json = ? WHERE id = ?",
+                (datetime.now(UTC).isoformat(), json.dumps(summary), run_id),
+            )
+
+    def record_recommendation(
+        self, run_id: str, release_id: int, score: float
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO recommendation_history (release_id, run_id, score) VALUES (?, ?, ?)",
+                (release_id, run_id, score),
+            )
+
+    def previously_recommended_release_ids(self) -> set[int]:
+        return {
+            int(r["release_id"])
+            for r in self.conn.execute("SELECT DISTINCT release_id FROM recommendation_history")
+        }
