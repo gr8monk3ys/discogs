@@ -191,3 +191,36 @@ class CacheStore:
             int(r["release_id"])
             for r in self.conn.execute("SELECT release_id FROM wantlist_items")
         }
+
+    def record_sync(self, scope: str, when: datetime) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO _sync_metadata(scope, last_sync_at) VALUES (?, ?)",
+                (scope, when.isoformat()),
+            )
+
+    def last_sync_at(self, scope: str) -> datetime | None:
+        row = self.conn.execute(
+            "SELECT last_sync_at FROM _sync_metadata WHERE scope = ?", (scope,)
+        ).fetchone()
+        if row is None:
+            return None
+        return datetime.fromisoformat(row["last_sync_at"])
+
+    def increment_api_calls(self, n: int = 1) -> None:
+        today = datetime.now(UTC).date().isoformat()
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO _api_call_counts(day, count) VALUES (?, ?)
+                ON CONFLICT(day) DO UPDATE SET count = count + excluded.count
+                """,
+                (today, n),
+            )
+
+    def api_calls_today(self) -> int:
+        today = datetime.now(UTC).date().isoformat()
+        row = self.conn.execute(
+            "SELECT count FROM _api_call_counts WHERE day = ?", (today,)
+        ).fetchone()
+        return int(row["count"]) if row else 0

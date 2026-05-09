@@ -123,3 +123,13 @@ CREATE TABLE IF NOT EXISTS recommendation_history (
     FOREIGN KEY (run_id) REFERENCES runs(id)
 );
 CREATE INDEX IF NOT EXISTS idx_history_run ON recommendation_history(run_id);
+
+CREATE TABLE IF NOT EXISTS _sync_metadata (
+    scope TEXT PRIMARY KEY,
+    last_sync_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS _api_call_counts (
+    day TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0
+);
