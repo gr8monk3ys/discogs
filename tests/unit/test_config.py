@@ -1,9 +1,9 @@
-from pathlib import Path
 import textwrap
+from pathlib import Path
 
 import pytest
 
-from discogs.config import Config, load_config
+from discogs.config import load_config
 
 
 def test_load_config_reads_token_from_toml(tmp_path: Path) -> None:

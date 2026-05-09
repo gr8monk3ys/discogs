@@ -6,6 +6,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+
 def _default_config_path() -> Path:
     return Path.home() / ".discogs" / "config.toml"
 

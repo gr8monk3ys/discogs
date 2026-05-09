@@ -47,13 +47,13 @@ class CacheStore:
     def close(self) -> None:
         self.conn.close()
 
-    def __enter__(self) -> "CacheStore":
+    def __enter__(self) -> CacheStore:
         return self
 
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def upsert_release(self, release: "Release") -> None:
+    def upsert_release(self, release: Release) -> None:
         with self.conn:
             self.conn.execute(
                 """
@@ -93,7 +93,7 @@ class CacheStore:
                 [(release.id, g) for g in release.genres],
             )
 
-    def get_release(self, release_id: int) -> "Release | None":
+    def get_release(self, release_id: int) -> Release | None:
         from discogs.models import Format, Release
         row = self.conn.execute(
             "SELECT * FROM releases WHERE id = ?", (release_id,)
@@ -135,7 +135,7 @@ class CacheStore:
             return None
         return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
 
-    def replace_collection(self, items: Iterable["CollectionItem"]) -> None:
+    def replace_collection(self, items: Iterable[CollectionItem]) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM collection_items")
             self.conn.executemany(
@@ -147,7 +147,7 @@ class CacheStore:
                 ],
             )
 
-    def iter_collection(self) -> Iterator["CollectionItem"]:
+    def iter_collection(self) -> Iterator[CollectionItem]:
         from discogs.models import CollectionItem
         rows = self.conn.execute(
             "SELECT * FROM collection_items ORDER BY date_added DESC"
@@ -166,7 +166,7 @@ class CacheStore:
             for r in self.conn.execute("SELECT release_id FROM collection_items")
         }
 
-    def replace_wantlist(self, items: Iterable["WantlistItem"]) -> None:
+    def replace_wantlist(self, items: Iterable[WantlistItem]) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM wantlist_items")
             self.conn.executemany(
@@ -174,7 +174,7 @@ class CacheStore:
                 [(i.release_id, i.date_added.isoformat(), i.notes) for i in items],
             )
 
-    def iter_wantlist(self) -> Iterator["WantlistItem"]:
+    def iter_wantlist(self) -> Iterator[WantlistItem]:
         from discogs.models import WantlistItem
         rows = self.conn.execute(
             "SELECT * FROM wantlist_items ORDER BY date_added DESC"

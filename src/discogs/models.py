@@ -45,9 +45,7 @@ class Release(BaseModel):
                 return True
             if descs & {"single", "compilation", "dj-mix", "dj mix"}:
                 continue
-        if self.formats and not self.is_compilation and not self._is_single():
-            return True
-        return False
+        return bool(self.formats) and not self.is_compilation and not self._is_single()
 
     @property
     def is_compilation(self) -> bool:
@@ -56,7 +54,7 @@ class Release(BaseModel):
     def _is_single(self) -> bool:
         for fmt in self.formats:
             descs = {d.lower() for d in fmt.descriptions}
-            if {"single", "7\"", '7"'} & descs:
+            if {"single", "7\""} & descs:
                 return True
         return False
 
