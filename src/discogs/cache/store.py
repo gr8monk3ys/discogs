@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from discogs.models import Artist, CollectionItem, Label, Release, WantlistItem
+    from discogs.models import Artist, CollectionItem, Credit, Label, Release, WantlistItem
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 CURRENT_SCHEMA_VERSION = 1
@@ -301,3 +301,44 @@ class CacheStore:
         if row is None:
             return None
         return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
+
+    def replace_release_credits(self, release_id: int, credits: list[Credit]) -> None:
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM release_credits WHERE release_id = ?", (release_id,)
+            )
+            self.conn.executemany(
+                "INSERT INTO release_credits (release_id, artist_id, role) VALUES (?, ?, ?)",
+                [(c.release_id, c.artist_id, c.role) for c in credits],
+            )
+
+    def get_release_credits(self, release_id: int) -> list[Credit]:
+        from discogs.models import Credit
+        rows = self.conn.execute(
+            "SELECT release_id, artist_id, role FROM release_credits WHERE release_id = ?",
+            (release_id,),
+        )
+        return [
+            Credit(release_id=r["release_id"], artist_id=r["artist_id"], role=r["role"])
+            for r in rows
+        ]
+
+    def replace_release_labels(
+        self, release_id: int, labels: list[tuple[int, str | None]]
+    ) -> None:
+        """labels = list of (label_id, catalog_number)."""
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM release_labels WHERE release_id = ?", (release_id,)
+            )
+            self.conn.executemany(
+                "INSERT INTO release_labels (release_id, label_id, catalog_number) "
+                "VALUES (?, ?, ?)",
+                [(release_id, lid, cat) for lid, cat in labels],
+            )
+
+    def get_release_label_ids(self, release_id: int) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT label_id FROM release_labels WHERE release_id = ?", (release_id,)
+        )
+        return [int(r["label_id"]) for r in rows]
