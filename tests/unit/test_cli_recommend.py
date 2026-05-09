@@ -5,9 +5,9 @@ import pytest
 from click.testing import CliRunner
 
 from discogs.cli.__main__ import cli
+from discogs.recommend.graph import GraphPath
 from discogs.recommend.pipeline import RunResult
 from discogs.recommend.scoring import ScoredCandidate
-from discogs.recommend.graph import GraphPath
 
 
 def _seed_config(home: Path) -> None:
@@ -65,8 +65,9 @@ def test_recommend_max_recs_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
          patch("discogs.cli.commands.recommend.run_recommend", return_value=fake_result) as rr, \
          patch("discogs.cli.commands.recommend.render_digest", return_value=""):
         bp.return_value = (MagicMock(), MagicMock(), real_cfg)
-        CliRunner().invoke(cli, ["recommend", "--max-recs", "5"])
+        result = CliRunner().invoke(cli, ["recommend", "--max-recs", "5"])
 
+    assert result.exit_code == 0, result.output
     rr.assert_called_once()
     kwargs = rr.call_args.kwargs
     assert kwargs["max_recs"] == 5

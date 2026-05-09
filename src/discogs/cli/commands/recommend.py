@@ -37,7 +37,7 @@ def recommend_cmd(max_recs: int, budget: int, scope: str, apply_flag: bool) -> N
     try:
         result = run_recommend(
             client, store, cfg,
-            max_recs=max_recs, budget=budget, seed_mode=scope,  # type: ignore[arg-type]
+            max_recs=max_recs, budget=budget, seed_mode=scope,
         )
 
         digest_md = render_digest(store, result)

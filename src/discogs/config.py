@@ -33,7 +33,8 @@ class Config:
         return (
             f"Config(discogs_token='***', discogs_username={self.discogs_username!r}, "
             f"anthropic_api_key={'***' if self.anthropic_api_key else None}, "
-            f"cache_path={self.cache_path!r}, user_agent={self.user_agent!r}, "
+            f"cache_path={self.cache_path!r}, digests_dir={self.digests_dir!r}, "
+            f"user_agent={self.user_agent!r}, "
             f"daily_api_budget={self.daily_api_budget})"
         )
 
