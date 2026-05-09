@@ -6,7 +6,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_CONFIG_PATH = Path.home() / ".discogs" / "config.toml"
+def _default_config_path() -> Path:
+    return Path.home() / ".discogs" / "config.toml"
 
 
 def _default_cache_path() -> Path:
@@ -31,7 +32,9 @@ class Config:
         )
 
 
-def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
+def load_config(path: Path | None = None) -> Config:
+    if path is None:
+        path = _default_config_path()
     if not path.exists():
         raise FileNotFoundError(
             f"No config at {path}. Run `discogs auth set` to create one."

@@ -4,6 +4,7 @@ from __future__ import annotations
 import click
 
 from discogs.cli.commands.auth import auth_group
+from discogs.cli.commands.status import status_cmd
 from discogs.cli.commands.sync_cmd import sync_cmd
 
 
@@ -15,6 +16,7 @@ def cli() -> None:
 
 cli.add_command(auth_group, name="auth")
 cli.add_command(sync_cmd)
+cli.add_command(status_cmd)
 
 
 def main() -> None:
