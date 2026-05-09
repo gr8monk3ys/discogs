@@ -15,12 +15,17 @@ def _default_cache_path() -> Path:
     return Path.home() / ".discogs" / "cache.db"
 
 
+def _default_digests_dir() -> Path:
+    return Path.home() / ".discogs" / "digests"
+
+
 @dataclass
 class Config:
     discogs_token: str = field(repr=False)
     discogs_username: str
     anthropic_api_key: str | None = field(default=None, repr=False)
     cache_path: Path = field(default_factory=_default_cache_path)
+    digests_dir: Path = field(default_factory=_default_digests_dir)
     user_agent: str = "discogs-recommender/0.1.0 (+https://github.com/gr8monk3ys/discogs)"
     daily_api_budget: int = 1500
 
