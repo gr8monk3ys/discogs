@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from discogs.models import Artist, CollectionItem, Release, WantlistItem
+    from discogs.models import Artist, CollectionItem, Label, Release, WantlistItem
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 CURRENT_SCHEMA_VERSION = 1
@@ -256,6 +256,47 @@ class CacheStore:
     def artist_age(self, artist_id: int) -> timedelta | None:
         row = self.conn.execute(
             "SELECT fetched_at FROM artists WHERE id = ?", (artist_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
+
+    def upsert_label(self, label: Label) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO labels (id, name, parent_label, releases_count, fetched_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    parent_label=excluded.parent_label,
+                    releases_count=excluded.releases_count,
+                    fetched_at=excluded.fetched_at
+                """,
+                (
+                    label.id, label.name, label.parent_label,
+                    label.releases_count, label.fetched_at.isoformat(),
+                ),
+            )
+
+    def get_label(self, label_id: int) -> Label | None:
+        from discogs.models import Label
+        row = self.conn.execute(
+            "SELECT * FROM labels WHERE id = ?", (label_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Label(
+            id=row["id"],
+            name=row["name"],
+            parent_label=row["parent_label"],
+            releases_count=row["releases_count"],
+            fetched_at=datetime.fromisoformat(row["fetched_at"]),
+        )
+
+    def label_age(self, label_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT fetched_at FROM labels WHERE id = ?", (label_id,)
         ).fetchone()
         if row is None:
             return None
