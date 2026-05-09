@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Iterable
 from dataclasses import dataclass
 
 from discogs.cache.store import CacheStore
@@ -102,10 +101,10 @@ def _format_score(rel: Release) -> float:
     return 0.0
 
 
-def _style_niche(styles: Iterable[str], user_freq: dict[str, float]) -> float:
+def _style_niche(styles: list[str], user_freq: dict[str, float]) -> float:
     if not styles:
         return 0.5
-    avg_freq = sum(user_freq.get(s, 0.0) for s in styles) / len(list(styles))
+    avg_freq = sum(user_freq.get(s, 0.0) for s in styles) / len(styles)
     return max(0.0, min(1.0, 1.0 - avg_freq))
 
 
