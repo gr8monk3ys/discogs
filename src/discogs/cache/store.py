@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from discogs.models import Release
+    from discogs.models import CollectionItem, Release, WantlistItem
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 CURRENT_SCHEMA_VERSION = 1
@@ -133,3 +134,60 @@ class CacheStore:
         if row is None:
             return None
         return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
+
+    def replace_collection(self, items: Iterable["CollectionItem"]) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM collection_items")
+            self.conn.executemany(
+                "INSERT INTO collection_items (release_id, folder_id, instance_id, date_added) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    (i.release_id, i.folder_id, i.instance_id, i.date_added.isoformat())
+                    for i in items
+                ],
+            )
+
+    def iter_collection(self) -> Iterator["CollectionItem"]:
+        from discogs.models import CollectionItem
+        rows = self.conn.execute(
+            "SELECT * FROM collection_items ORDER BY date_added DESC"
+        )
+        for row in rows:
+            yield CollectionItem(
+                release_id=row["release_id"],
+                folder_id=row["folder_id"],
+                instance_id=row["instance_id"],
+                date_added=datetime.fromisoformat(row["date_added"]),
+            )
+
+    def collection_release_ids(self) -> set[int]:
+        return {
+            int(r["release_id"])
+            for r in self.conn.execute("SELECT release_id FROM collection_items")
+        }
+
+    def replace_wantlist(self, items: Iterable["WantlistItem"]) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM wantlist_items")
+            self.conn.executemany(
+                "INSERT INTO wantlist_items (release_id, date_added, notes) VALUES (?, ?, ?)",
+                [(i.release_id, i.date_added.isoformat(), i.notes) for i in items],
+            )
+
+    def iter_wantlist(self) -> Iterator["WantlistItem"]:
+        from discogs.models import WantlistItem
+        rows = self.conn.execute(
+            "SELECT * FROM wantlist_items ORDER BY date_added DESC"
+        )
+        for row in rows:
+            yield WantlistItem(
+                release_id=row["release_id"],
+                date_added=datetime.fromisoformat(row["date_added"]),
+                notes=row["notes"],
+            )
+
+    def wantlist_release_ids(self) -> set[int]:
+        return {
+            int(r["release_id"])
+            for r in self.conn.execute("SELECT release_id FROM wantlist_items")
+        }
