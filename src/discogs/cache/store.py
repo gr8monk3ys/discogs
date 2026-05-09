@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from discogs.models import CollectionItem, Release, WantlistItem
+    from discogs.models import Artist, CollectionItem, Release, WantlistItem
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 CURRENT_SCHEMA_VERSION = 1
@@ -224,3 +224,39 @@ class CacheStore:
             "SELECT count FROM _api_call_counts WHERE day = ?", (today,)
         ).fetchone()
         return int(row["count"]) if row else 0
+
+    def upsert_artist(self, artist: Artist) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO artists (id, name, profile, fetched_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    profile=excluded.profile,
+                    fetched_at=excluded.fetched_at
+                """,
+                (artist.id, artist.name, artist.profile, artist.fetched_at.isoformat()),
+            )
+
+    def get_artist(self, artist_id: int) -> Artist | None:
+        from discogs.models import Artist
+        row = self.conn.execute(
+            "SELECT * FROM artists WHERE id = ?", (artist_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Artist(
+            id=row["id"],
+            name=row["name"],
+            profile=row["profile"],
+            fetched_at=datetime.fromisoformat(row["fetched_at"]),
+        )
+
+    def artist_age(self, artist_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT fetched_at FROM artists WHERE id = ?", (artist_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["fetched_at"])
