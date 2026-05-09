@@ -73,6 +73,7 @@ def fetch_artist_releases(
             return cached[:top_k]
 
     raw = client.call("artist", artist_id)
+    seen_ids: set[int] = set()
     rids: list[int] = []
     for i, ref in enumerate(raw.releases):
         if i >= page_size:
@@ -80,7 +81,11 @@ def fetch_artist_releases(
         ref_type = _ref_type(ref)
         if ref_type != "release":
             continue
-        rids.append(int(ref.id))
+        rid = int(ref.id)
+        if rid in seen_ids:
+            continue
+        seen_ids.add(rid)
+        rids.append(rid)
         if len(rids) >= top_k:
             break
 

@@ -42,15 +42,21 @@ def _int_or_none(v: Any) -> int | None:
 
 
 def fetch_release(
-    client: DiscogsClient, store: CacheStore, release_id: int
+    client: DiscogsClient, store: CacheStore, release_id: int,
+    *, force_credits: bool = False,
 ) -> Release:
     """Return a Release for `release_id`, fetching from API if cache is missing or stale.
 
     Persists the release row, credits (extra-artists at the release and track levels),
     label associations, styles, and genres into the local cache.
+
+    If `force_credits` is True and the release has no cached credits (e.g. because
+    it was stored before credit-fetching was implemented), a fresh API call is made
+    regardless of the release TTL.
     """
     age = store.release_age(release_id)
-    if age is not None and age < RELEASE_TTL:
+    credits_missing = force_credits and not store.get_release_credits(release_id)
+    if age is not None and age < RELEASE_TTL and not credits_missing:
         cached = store.get_release(release_id)
         if cached is not None:
             return cached
@@ -94,20 +100,47 @@ def _credits_from_raw(raw: Any, release_id: int) -> list[Credit]:
     seen: set[tuple[int, str]] = set()
     credits: list[Credit] = []
 
-    for ea in getattr(raw, "extraartists", None) or []:
-        key = (int(ea.id), str(ea.role))
-        if key in seen:
+    # The python3-discogs-client library exposes extraartists only via fetch(),
+    # not as a plain attribute descriptor.  getattr returns None for it.
+    # Items in the list are plain dicts with 'id' and 'role' keys.
+    def _ea_list(obj: Any, field: str) -> list[dict[str, Any]]:
+        """Return the extraartists list from obj, trying fetch() first."""
+        if hasattr(obj, "fetch"):
+            try:
+                v = obj.fetch(field)
+                if isinstance(v, list):
+                    return v
+            except (KeyError, AttributeError, TypeError):
+                pass
+        v = getattr(obj, field, None)
+        return v if isinstance(v, list) else []
+
+    def _ea_id_role(ea: Any) -> tuple[int, str] | None:
+        """Extract (artist_id, role) from an extraartist entry (dict or object)."""
+        if isinstance(ea, dict):
+            try:
+                return int(ea["id"]), str(ea.get("role", ""))
+            except (KeyError, TypeError, ValueError):
+                return None
+        try:
+            return int(ea.id), str(ea.role)
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    for ea in _ea_list(raw, "extraartists"):
+        pair = _ea_id_role(ea)
+        if pair is None or pair in seen:
             continue
-        seen.add(key)
-        credits.append(Credit(release_id=release_id, artist_id=int(ea.id), role=str(ea.role)))
+        seen.add(pair)
+        credits.append(Credit(release_id=release_id, artist_id=pair[0], role=pair[1]))
 
     for track in getattr(raw, "tracklist", None) or []:
-        for ea in getattr(track, "extraartists", None) or []:
-            key = (int(ea.id), str(ea.role))
-            if key in seen:
+        for ea in _ea_list(track, "extraartists"):
+            pair = _ea_id_role(ea)
+            if pair is None or pair in seen:
                 continue
-            seen.add(key)
-            credits.append(Credit(release_id=release_id, artist_id=int(ea.id), role=str(ea.role)))
+            seen.add(pair)
+            credits.append(Credit(release_id=release_id, artist_id=pair[0], role=pair[1]))
 
     return credits
 

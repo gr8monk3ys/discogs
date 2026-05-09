@@ -1,10 +1,13 @@
 """Stage 2: bounded BFS through the credit graph."""
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from discogs_client.exceptions import HTTPError
 
 from discogs.api.artists import fetch_artist_releases
 from discogs.api.client import DiscogsClient
@@ -90,9 +93,12 @@ def walk_credit_graph(
         if remaining() <= 0:
             break
 
-        seed_release_ids = fetch_artist_releases(
-            client, store, seed.artist_id, top_k=max_releases_per_neighbor,
-        )
+        try:
+            seed_release_ids = fetch_artist_releases(
+                client, store, seed.artist_id, top_k=max_releases_per_neighbor,
+            )
+        except (HTTPError, json.JSONDecodeError, ValueError):
+            continue
 
         for release_id in seed_release_ids:
             if remaining() <= 0:
@@ -106,7 +112,10 @@ def walk_credit_graph(
                     edge_weight=1.0,
                 ))
 
-            fetch_release(client, store, release_id)
+            try:
+                fetch_release(client, store, release_id)
+            except (HTTPError, json.JSONDecodeError, ValueError):
+                continue
             credits = store.get_release_credits(release_id)
 
             ranked_neighbors = _rank_neighbors(
@@ -117,9 +126,12 @@ def walk_credit_graph(
                 if remaining() <= 0:
                     break
 
-                neighbor_release_ids = fetch_artist_releases(
-                    client, store, neighbor_id, top_k=max_releases_per_neighbor,
-                )
+                try:
+                    neighbor_release_ids = fetch_artist_releases(
+                        client, store, neighbor_id, top_k=max_releases_per_neighbor,
+                    )
+                except (HTTPError, json.JSONDecodeError, ValueError):
+                    continue
                 for nr_id in neighbor_release_ids:
                     if nr_id in excluded:
                         continue

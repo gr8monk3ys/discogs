@@ -56,6 +56,9 @@ def run_recommend(
     api_calls_at_start = store.api_calls_today()
 
     try:
+        # Ensure library releases have their credits cached so seed selection has data.
+        _prefetch_library_releases(client, store, scope=seed_mode, daily_budget=config.daily_api_budget)
+
         seeds = select_seeds(store, mode=seed_mode, min_occurrences=min_seed_occurrences)  # type: ignore[arg-type]
         if not seeds:
             store.finish_run(run_id, summary={"seeds": 0, "candidates": 0, "selected": 0})
@@ -142,6 +145,35 @@ def _load_releases(
         out[rid] = fetch_release(client, store, rid)
         budget_left -= 1
     return out
+
+
+def _prefetch_library_releases(
+    client: DiscogsClient, store: CacheStore, *, scope: str,
+    daily_budget: int,
+) -> int:
+    """Ensure release_credits is populated for every library release.
+
+    select_seeds reads release_credits to count artist occurrences. Phase 1's
+    sync only stores release IDs in collection_items / wantlist_items; the
+    credits come from fetch_release, which we haven't called yet for these.
+
+    Returns the number of fetches performed (so the caller can report it).
+    """
+    coll_ids = store.collection_release_ids() if scope in ("collection", "both") else set()
+    want_ids = store.wantlist_release_ids() if scope in ("wantlist", "both") else set()
+    library_ids = coll_ids | want_ids
+
+    fetches = 0
+    for release_id in library_ids:
+        budget_remaining = daily_budget - store.api_calls_today()
+        if budget_remaining <= 0:
+            break
+        # force_credits=True ensures a fresh API call if the release is cached
+        # but has no credits (e.g. stored before credit-fetching was implemented).
+        # Once credits exist, subsequent calls return from cache at no cost.
+        fetch_release(client, store, release_id, force_credits=True)
+        fetches += 1
+    return fetches
 
 
 def _load_label_counts(store: CacheStore, release_ids: list[int]) -> dict[int, int]:

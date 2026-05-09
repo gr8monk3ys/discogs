@@ -8,7 +8,7 @@ import pytest
 from discogs.api.client import DiscogsClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
-from discogs.models import Format, Release
+from discogs.models import CollectionItem, Format, Release
 from discogs.recommend.graph import GraphPath
 from discogs.recommend.pipeline import RunResult, run_recommend
 from discogs.recommend.scoring import ScoredCandidate
@@ -124,3 +124,20 @@ def test_no_picks_when_no_seeds(setup) -> None:
         result = run_recommend(client, store, cfg, max_recs=10)
     assert result.picks == []
     assert result.candidate_count == 0
+
+
+def test_pipeline_prefetches_library_releases(setup) -> None:
+    cfg, store, client = setup
+
+    # Seed the cache with a collection item — but NO release_credits row.
+    store.replace_collection([
+        CollectionItem(release_id=42, folder_id=0, instance_id=1, date_added=datetime.now(UTC)),
+    ])
+
+    with patch("discogs.recommend.pipeline.fetch_release") as fr, \
+         patch("discogs.recommend.pipeline.select_seeds", return_value=[]):
+        # Make fetch_release a no-op (in real use it would populate credits)
+        fr.return_value = None
+        run_recommend(client, store, cfg, max_recs=5)
+
+    fr.assert_called()  # was called at least once during prefetch
