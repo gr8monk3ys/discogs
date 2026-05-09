@@ -73,7 +73,11 @@ def run_recommend(
             budget=budget,
         )
 
-        releases = _load_releases(client, store, list(candidate_paths.keys()), budget_left=budget * 2)
+        # After the graph walk, fill in any candidates whose full release detail isn't
+        # cached yet. Cap to whatever's left of the user's daily API budget so we can't
+        # blow past it from the load phase.
+        release_load_budget = max(0, config.daily_api_budget - store.api_calls_today())
+        releases = _load_releases(client, store, list(candidate_paths.keys()), budget_left=release_load_budget)
         label_counts = _load_label_counts(store, list(candidate_paths.keys()))
 
         scored = score_candidates(
