@@ -35,6 +35,7 @@ def test_mark_recommendation_applied(store: CacheStore) -> None:
     ).fetchone()
     assert row["applied_to_wantlist"] == 1
     assert row["applied_at"] is not None
+    assert datetime.fromisoformat(row["applied_at"]) == when
 
 
 def test_mark_recommendation_removed(store: CacheStore) -> None:
@@ -51,6 +52,7 @@ def test_mark_recommendation_removed(store: CacheStore) -> None:
     ).fetchone()
     assert row["applied_to_wantlist"] == 0
     assert row["removed_at"] is not None
+    assert datetime.fromisoformat(row["removed_at"]) == when
     assert row["removed_reason"] == "undo"
 
 
@@ -83,3 +85,21 @@ def test_last_applied_run_id_returns_most_recent(store: CacheStore) -> None:
     store.mark_recommendation_applied(run_b, 2, datetime.now(UTC))
 
     assert store.last_applied_run_id() == run_b
+
+
+def test_mark_recommendation_applied_clears_prior_removal(store: CacheStore) -> None:
+    run_id, _ = store.start_run(args={})
+    store.record_recommendation(run_id, release_id=42, score=0.7)
+    store.mark_recommendation_applied(run_id, 42, datetime.now(UTC))
+    store.mark_recommendation_removed(run_id, 42, datetime.now(UTC), reason="undo")
+    # Re-apply: should clear removed_at/removed_reason
+    store.mark_recommendation_applied(run_id, 42, datetime.now(UTC))
+
+    row = store.conn.execute(
+        "SELECT applied_to_wantlist, removed_at, removed_reason "
+        "FROM recommendation_history WHERE run_id = ? AND release_id = ?",
+        (run_id, 42),
+    ).fetchone()
+    assert row["applied_to_wantlist"] == 1
+    assert row["removed_at"] is None
+    assert row["removed_reason"] is None
