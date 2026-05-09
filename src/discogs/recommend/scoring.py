@@ -1,6 +1,7 @@
 """Stage 3: score the candidate set produced by the graph walk.
 
-8 sub-scores in [0, 1]; the 9th (`influence_chain`) is always 0 in Phase 2.
+9 sub-scores in [0, 1]; `influence_chain` is non-zero when influence-kind paths
+are present (Phase 3+). `connection` counts only direct-seed paths.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from discogs.recommend.graph import GraphPath
 
 DEFAULT_WEIGHTS: dict[str, float] = {
     "connection": 0.20,
-    "influence_chain": 0.15,   # always 0 in Phase 2
+    "influence_chain": 0.15,
     "rarity": 0.20,
     "demand_ratio": 0.05,
     "label_obscurity": 0.05,
@@ -51,10 +52,16 @@ def score_candidates(
     user_style_freq = _user_style_frequency(store)
 
     raw_connections: dict[int, float] = {
-        rid: sum(p.seed_weight * p.edge_weight for p in ps)
+        rid: sum(p.seed_weight * p.edge_weight for p in ps if p.seed_kind == "direct")
         for rid, ps in candidate_paths.items()
     }
     max_conn = max(raw_connections.values()) or 1.0
+
+    raw_influences: dict[int, float] = {
+        rid: sum(p.seed_weight * p.edge_weight for p in ps if p.seed_kind == "influence")
+        for rid, ps in candidate_paths.items()
+    }
+    max_infl = max(raw_influences.values()) or 1.0
 
     have_values = [releases[rid].community_have for rid in candidate_paths if rid in releases]
     max_have = max(have_values) if have_values else 1
@@ -69,7 +76,7 @@ def score_candidates(
 
         sub = {
             "connection": raw_connections[rid] / max_conn,
-            "influence_chain": 0.0,
+            "influence_chain": raw_influences[rid] / max_infl,
             "rarity": 1.0 - math.log(rel.community_have + 1) / math.log(max_have + 1),
             "demand_ratio": min(1.0, (rel.community_want / max(rel.community_have, 1)) / 2.0),
             "label_obscurity": 1.0 - math.log(label_release_counts.get(rid, 1) + 1) / math.log(max_label_count + 1),
