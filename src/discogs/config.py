@@ -28,6 +28,7 @@ class Config:
     digests_dir: Path = field(default_factory=_default_digests_dir)
     user_agent: str = "discogs-recommender/0.1.0 (+https://github.com/gr8monk3ys/discogs)"
     daily_api_budget: int = 1500
+    daily_llm_budget: int = 100
 
     def __repr__(self) -> str:
         return (
