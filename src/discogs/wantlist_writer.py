@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from discogs_client.exceptions import HTTPError
+
 from discogs.api.client import BudgetExceeded, DiscogsClient
 
 
@@ -55,8 +57,9 @@ def remove_from_wantlist(
         return RemoveResult(release_id=release_id, status="removed", error=None)
     except BudgetExceeded:
         raise
-    except Exception as e:  # noqa: BLE001
-        msg = str(e)
-        if "404" in msg:
-            return RemoveResult(release_id=release_id, status="skipped", error=msg)
-        return RemoveResult(release_id=release_id, status="error", error=msg)
+    except HTTPError as e:
+        if e.status_code == 404:
+            return RemoveResult(release_id=release_id, status="skipped", error=str(e))
+        return RemoveResult(release_id=release_id, status="error", error=str(e))
+    except Exception as e:  # noqa: BLE001 — convert any unexpected failure to structured result
+        return RemoveResult(release_id=release_id, status="error", error=str(e))

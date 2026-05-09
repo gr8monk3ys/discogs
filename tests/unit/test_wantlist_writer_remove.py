@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from discogs_client.exceptions import HTTPError
 
 from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.cache.store import CacheStore, init_db
@@ -31,6 +32,7 @@ def test_remove_success(setup) -> None:
 
     result = remove_from_wantlist(client, username="u", release_id=42)
     assert result == RemoveResult(release_id=42, status="removed", error=None)
+    user.wantlist.remove.assert_called_once_with(42)
 
 
 def test_remove_skipped_when_not_in_wantlist(setup) -> None:
@@ -38,13 +40,12 @@ def test_remove_skipped_when_not_in_wantlist(setup) -> None:
     treat that as 'skipped' rather than an error."""
     _, client = setup
     user = MagicMock()
-    err = RuntimeError("404 Not Found")
-    user.wantlist.remove.side_effect = err
+    user.wantlist.remove.side_effect = HTTPError("Release not in wantlist", 404)
     client.upstream.user.return_value = user
 
     result = remove_from_wantlist(client, username="u", release_id=42)
     assert result.status == "skipped"
-    assert "404" in (result.error or "")
+    assert "404" in (result.error or "")  # str(HTTPError) is "404: <message>"
 
 
 def test_remove_genuine_error(setup) -> None:
