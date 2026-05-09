@@ -6,13 +6,19 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from discogs.api.client import DiscogsClient
+from discogs.api.llm import LLMClient
 from discogs.api.releases import fetch_release
 from discogs.cache.store import CacheStore
 from discogs.config import Config
 from discogs.models import Release
+from discogs.recommend.enrich import enrich_candidates
 from discogs.recommend.graph import walk_credit_graph
+from discogs.recommend.influences import expand_influences
 from discogs.recommend.scoring import DEFAULT_WEIGHTS, ScoredCandidate, score_candidates
-from discogs.recommend.seeds import select_seeds
+from discogs.recommend.seeds import SeedArtist, select_seeds
+
+_INFLUENCE_DECAY = 0.6
+_CONFIDENCE_FACTOR = {"high": 1.0, "medium": 0.7, "low": 0.4}
 
 
 @dataclass
@@ -40,6 +46,10 @@ def run_recommend(
     max_releases_per_neighbor: int = 25,
     budget: int = 800,
     weights: dict[str, float] | None = None,
+    llm: LLMClient | None = None,
+    with_influences: bool = True,
+    top_k_seeds_for_influences: int = 20,
+    with_enrichment: bool = True,
 ) -> RunResult:
     """Run the full Phase 2 recommendation pipeline. Dry-run only (no wantlist writes)."""
     weights = weights or DEFAULT_WEIGHTS
@@ -49,6 +59,9 @@ def run_recommend(
         "max_neighbors_per_seed": max_neighbors_per_seed,
         "max_releases_per_neighbor": max_releases_per_neighbor,
         "budget": budget,
+        "with_influences": with_influences,
+        "top_k_seeds_for_influences": top_k_seeds_for_influences,
+        "with_enrichment": with_enrichment,
     }
     run_id, display_id = store.start_run(args)
 
@@ -69,6 +82,11 @@ def run_recommend(
                 args=args,
             )
 
+        if with_influences and llm is not None and seeds:
+            seeds = _expand_seed_pool_with_influences(
+                client, store, llm, seeds, top_k=top_k_seeds_for_influences,
+            )
+
         candidate_paths = walk_credit_graph(
             client, store, seeds,
             max_neighbors_per_seed=max_neighbors_per_seed,
@@ -87,6 +105,13 @@ def run_recommend(
             store=store, candidate_paths=candidate_paths,
             releases=releases, label_release_counts=label_counts, weights=weights,
         )
+
+        if with_enrichment and llm is not None and scored:
+            head = scored[: max_recs * 2]
+            tail = scored[max_recs * 2 :]
+            enriched_head = enrich_candidates(llm, head, releases)
+            enriched_head.sort(key=lambda s: -s.score)
+            scored = enriched_head + tail
 
         picks = _apply_diversity(scored, max_recs=max_recs, max_per_artist=max_per_artist)
 
@@ -194,3 +219,52 @@ def _load_label_counts(store: CacheStore, release_ids: list[int]) -> dict[int, i
         ).fetchone()
         out[rid] = int(row["rc"]) if row and row["rc"] is not None else 0
     return out
+
+
+def _expand_seed_pool_with_influences(
+    client: DiscogsClient,
+    store: CacheStore,
+    llm: LLMClient,
+    seeds: list[SeedArtist],
+    *,
+    top_k: int,
+) -> list[SeedArtist]:
+    """For the top `top_k` direct seeds (by weight), fetch Claude-derived
+    influences and append them as additional SeedArtists with seed_kind='influence'.
+
+    Decayed weight = original_seed_weight * confidence_factor * 0.6.
+    """
+    direct_seeds = [s for s in seeds if s.seed_kind == "direct"]
+    direct_seeds.sort(key=lambda s: -s.weight)
+    pool = list(seeds)
+    seen_influence_ids: set[int] = set()
+
+    for seed in direct_seeds[:top_k]:
+        artist = store.get_artist(seed.artist_id)
+        artist_name = artist.name if artist is not None else f"artist-{seed.artist_id}"
+        styles: list[str] = []  # Phase 3 v1: skip per-artist style lookup; future can wire it.
+
+        edges = expand_influences(
+            client, store, llm,
+            artist_id=seed.artist_id,
+            artist_name=artist_name,
+            primary_styles=styles,
+        )
+
+        for edge in edges:
+            if edge.influence_artist_id in seen_influence_ids:
+                continue
+            seen_influence_ids.add(edge.influence_artist_id)
+
+            factor = _CONFIDENCE_FACTOR.get(edge.confidence, 0.4)
+            decayed = seed.weight * factor * _INFLUENCE_DECAY
+            decayed = max(0.05, min(1.0, decayed))
+
+            pool.append(SeedArtist(
+                artist_id=edge.influence_artist_id,
+                weight=decayed,
+                sources=(),
+                seed_kind="influence",
+            ))
+
+    return pool

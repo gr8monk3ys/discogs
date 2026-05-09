@@ -9,6 +9,7 @@ from typing import Literal
 from discogs.cache.store import CacheStore
 
 Mode = Literal["collection", "wantlist", "both"]
+SeedKind = Literal["direct", "influence"]
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class SeedArtist:
     artist_id: int
     weight: float            # in [0.1, 1.0]
     sources: tuple[str, ...] # subset of ("collection", "wantlist")
+    seed_kind: SeedKind = "direct"
 
 
 def select_seeds(

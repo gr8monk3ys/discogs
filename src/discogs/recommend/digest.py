@@ -72,6 +72,11 @@ def _render_pick(store: CacheStore, rank: int, pick: ScoredCandidate) -> str:
         f"- Connection: {seed_name} [{chain_kind}, weight {primary_path.seed_weight:.2f}]"
         if primary_path else ""
     )
+    if pick.enrichment is not None:
+        note = pick.enrichment.note.strip()
+        confidence = pick.enrichment.confidence
+        parts.append(f"> {note}")
+        parts.append(f"> *(Claude editorial — confidence: {confidence})*")
     parts.append("")
     return "\n".join(p for p in parts if p)
 
