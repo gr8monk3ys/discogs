@@ -347,12 +347,12 @@ class CacheStore:
     def start_run(self, args: dict[str, object]) -> tuple[str, str]:
         """Insert a new row in `runs`, return (uuid, display_id).
 
-        display_id is YYYY-MM-DD-HHMM in UTC and serves as the human handle
+        display_id is YYYY-MM-DD-HHMMSS in UTC and serves as the human handle
         used by `discogs apply <run-id>` (Phase 4).
         """
         run_id = str(uuid.uuid4())
         now = datetime.now(UTC)
-        display_id = now.strftime("%Y-%m-%d-%H%M")
+        display_id = now.strftime("%Y-%m-%d-%H%M%S")
         with self.conn:
             self.conn.execute(
                 "INSERT INTO runs (id, display_id, started_at, args_json) VALUES (?, ?, ?, ?)",

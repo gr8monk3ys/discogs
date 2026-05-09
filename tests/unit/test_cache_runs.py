@@ -56,18 +56,16 @@ def test_previously_recommended_release_ids_returns_all(store: CacheStore) -> No
     store.record_recommendation(run_a, release_id=2, score=0.6)
     store.finish_run(run_a, summary={})
 
-    # Wait until next minute to ensure unique display_id
-    now = datetime.now(UTC)
-    seconds_until_next_minute = 60 - now.second
-    time.sleep(seconds_until_next_minute + 0.1)
+    # Ensure second-precision display_id is different for run_b
+    time.sleep(1.01)
     run_b, _ = store.start_run(args={})
     store.record_recommendation(run_b, release_id=3, score=0.7)
 
     assert store.previously_recommended_release_ids() == {1, 2, 3}
 
 
-def test_display_id_uses_utc_minute(store: CacheStore) -> None:
+def test_display_id_uses_utc_second(store: CacheStore) -> None:
     run_id, display_id = store.start_run(args={})
-    # YYYY-MM-DD-HHMM, e.g. 2026-05-08-1830
-    assert len(display_id) == len("YYYY-MM-DD-HHMM")
+    # YYYY-MM-DD-HHMMSS, e.g. 2026-05-08-183045 (17 chars)
+    assert len(display_id) == len("YYYY-MM-DD-HHMMSS")
     assert display_id[4] == "-" and display_id[7] == "-" and display_id[10] == "-"
