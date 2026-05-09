@@ -31,6 +31,7 @@ class GraphPath:
     seed_weight: float
     edge_chain: tuple[tuple[int, int, str], ...]
     edge_weight: float  # product of role weights along the chain
+    seed_kind: str = "direct"  # "direct" | "influence"
 
 
 _PRIMARY_ROLES = {
@@ -110,6 +111,7 @@ def walk_credit_graph(
                     seed_weight=seed.weight,
                     edge_chain=((seed.artist_id, release_id, "direct"),),
                     edge_weight=1.0,
+                    seed_kind=seed.seed_kind,
                 ))
 
             try:
@@ -143,6 +145,7 @@ def walk_credit_graph(
                             (neighbor_id, nr_id, neighbor_role),
                         ),
                         edge_weight=role_weight(neighbor_role),
+                        seed_kind=seed.seed_kind,
                     ))
 
     return dict(paths)
