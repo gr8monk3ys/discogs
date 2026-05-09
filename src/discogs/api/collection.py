@@ -16,7 +16,7 @@ def fetch_collection(client: DiscogsClient) -> Iterator[CollectionItem]:
         yield CollectionItem(
             release_id=int(raw.release.id),
             folder_id=int(raw.folder_id),
-            instance_id=int(raw.id),
+            instance_id=int(raw.instance_id),
             date_added=_parse_dt(raw.date_added),
         )
 

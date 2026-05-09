@@ -25,7 +25,8 @@ def client(tmp_path: Path) -> DiscogsClient:
 def _fake_collection_item(rid: int, instance: int) -> MagicMock:
     item = MagicMock()
     item.release.id = rid
-    item.id = instance
+    item.id = rid                # python3-discogs-client aliases .id to release.id
+    item.instance_id = instance  # actual unique key for an owned copy
     item.folder_id = 0
     item.date_added = datetime.now(UTC).isoformat()
     return item

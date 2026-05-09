@@ -11,10 +11,12 @@ from discogs.models import WantlistItem
 def fetch_wantlist(client: DiscogsClient, username: str) -> Iterator[WantlistItem]:
     user = client.call("user", username)
     for raw in user.wantlist:
+        date_added = getattr(raw, "date_added", None) or raw.data.get("date_added")
+        notes = getattr(raw, "notes", None) or None
         yield WantlistItem(
             release_id=int(raw.release.id),
-            date_added=_parse_dt(raw.date_added),
-            notes=getattr(raw, "notes", None),
+            date_added=_parse_dt(date_added),
+            notes=notes,
         )
 
 
