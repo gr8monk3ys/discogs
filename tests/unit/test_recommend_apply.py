@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.recommend.apply import ApplyReport, apply_run
@@ -96,3 +96,14 @@ def test_apply_returns_zero_when_run_has_no_picks(setup) -> None:
     store.finish_run(run_id, summary={})
     report = apply_run(client, store, username="u", run_id=run_id)
     assert report.successes == 0 and report.failures == 0
+
+
+def test_apply_propagates_budget_exceeded(setup) -> None:
+    """BudgetExceeded must escape apply_run so the CLI can abort the batch."""
+    store, client = setup
+    run_id = _seed_run(store, picks=[(10, 0.8)])
+
+    with patch("discogs.recommend.apply.push_to_wantlist") as push:
+        push.side_effect = BudgetExceeded("daily limit")
+        with pytest.raises(BudgetExceeded):
+            apply_run(client, store, username="u", run_id=run_id)
