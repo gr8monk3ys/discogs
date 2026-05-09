@@ -1,6 +1,6 @@
 [project]
 name = "discogs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Discogs collection sync and recommendation framework"
 requires-python = ">=3.11"
 dependencies = [
@@ -8,6 +8,7 @@ dependencies = [
     "click>=8.1",
     "rich>=13.0",
     "pydantic>=2.5",
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]
