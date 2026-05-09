@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from discogs.api.artists import fetch_artist_releases
 from discogs.api.client import DiscogsClient
@@ -11,12 +12,15 @@ from discogs.api.releases import fetch_release
 from discogs.cache.store import CacheStore
 from discogs.recommend.seeds import SeedArtist
 
+if TYPE_CHECKING:
+    from discogs.models import Credit
+
 
 @dataclass(frozen=True)
 class GraphPath:
     """One trace of how a candidate was reached.
 
-    `edge_chain` is a list of (artist_id, release_id, role) tuples. For a direct
+    `edge_chain` is a tuple of (artist_id, release_id, role) tuples. For a direct
     seed release the chain has length 1 (role="direct"); for a one-hop neighbor
     it has length 2.
     """
@@ -133,7 +137,7 @@ def walk_credit_graph(
 
 
 def _rank_neighbors(
-    credits: Sequence, *, exclude_artist_id: int, top: int,
+    credits: Sequence[Credit], *, exclude_artist_id: int, top: int,
 ) -> list[tuple[int, str]]:
     """Return up to `top` (artist_id, role) pairs ranked by role weight."""
     seen: dict[int, tuple[float, str]] = {}

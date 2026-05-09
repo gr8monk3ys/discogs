@@ -143,6 +143,42 @@ def test_walk_excludes_previously_recommended(setup) -> None:
     assert 102 in paths
 
 
+def test_walk_excludes_neighbor_release_in_library(setup) -> None:
+    """A release reached via a one-hop neighbor that's already in the wantlist must not appear."""
+    store, client = setup
+    seeds = [SeedArtist(artist_id=7, weight=0.9, sources=("collection",))]
+
+    # Release 999 will be the wantlisted neighbor release we want to verify is excluded.
+    store.replace_wantlist([
+        WantlistItem(release_id=999, date_added=datetime.now(UTC), notes=None),
+    ])
+
+    with patch("discogs.recommend.graph.fetch_artist_releases") as far, \
+         patch("discogs.recommend.graph.fetch_release") as fr:
+
+        def fake_fetch_artist_releases(_c, _s, artist_id, top_k=25):
+            if artist_id == 7:
+                return [101]      # seed's direct release
+            if artist_id == 99:
+                return [999, 998]  # neighbor's releases — 999 is in wantlist, 998 is not
+            return []
+
+        far.side_effect = fake_fetch_artist_releases
+        fr.side_effect = lambda _c, _s, rid: _stub_release(rid, credits=[])
+        store.replace_release_credits(101, [
+            Credit(release_id=101, artist_id=7, role="Saxophone"),
+            Credit(release_id=101, artist_id=99, role="Producer"),
+        ])
+        store.replace_release_credits(999, [])
+        store.replace_release_credits(998, [])
+
+        paths = walk_credit_graph(client, store, seeds, max_neighbors_per_seed=3, budget=100)
+
+    assert 999 not in paths   # excluded because in wantlist
+    assert 998 in paths        # included as one-hop candidate
+    assert 101 in paths        # the direct seed release also included (not in any library set)
+
+
 def test_walk_respects_budget(setup) -> None:
     store, client = setup
     seeds = [
