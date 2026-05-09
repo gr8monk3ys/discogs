@@ -29,11 +29,18 @@ _RATING_COUNT_FLOOR = 5
 
 
 @dataclass(frozen=True)
+class Enrichment:
+    note: str
+    confidence: str  # "high" | "medium" | "low"
+
+
+@dataclass(frozen=True)
 class ScoredCandidate:
     release_id: int
     score: float
     subscores: dict[str, float]
     paths: tuple[GraphPath, ...]
+    enrichment: Enrichment | None = None
 
 
 def score_candidates(
