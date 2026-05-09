@@ -54,6 +54,20 @@ def test_push_increments_api_call_counter(setup) -> None:
 
     initial = store.api_calls_today()
     push_to_wantlist(client, username="u", release_id=42)
-    # one call for `user(username)`, one for `wantlist.add` — but discogs client wraps both.
-    # We at minimum want >= 1 increment.
-    assert store.api_calls_today() > initial
+    assert store.api_calls_today() == initial + 2
+
+
+def test_push_propagates_budget_exceeded(tmp_path: Path) -> None:
+    from discogs.api.client import BudgetExceeded
+    cfg = Config(
+        discogs_token="t", discogs_username="u",
+        cache_path=tmp_path / "cache.db", daily_api_budget=0,
+    )
+    init_db(cfg.cache_path)
+    store = CacheStore(cfg.cache_path)
+    client = DiscogsClient(cfg, store, upstream_factory=lambda *a, **kw: MagicMock())
+
+    with pytest.raises(BudgetExceeded):
+        push_to_wantlist(client, username="u", release_id=42)
+
+    store.close()

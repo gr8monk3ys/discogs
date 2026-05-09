@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,9 @@ def push_to_wantlist(
     try:
         user = client.call("user", username)
         user.wantlist.add(release_id)
-        client._store.increment_api_calls(1)  # the wantlist.add call itself
+        client.charge_call(1)
         return PushResult(release_id=release_id, ok=True, error=None)
+    except BudgetExceeded:
+        raise
     except Exception as e:  # noqa: BLE001 — convert any failure to structured result
         return PushResult(release_id=release_id, ok=False, error=str(e))
