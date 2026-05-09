@@ -13,6 +13,7 @@ from discogs.config import Config
 from discogs.models import Release
 from discogs.recommend.graph import walk_credit_graph
 from discogs.recommend.influences import expand_influences
+from discogs.recommend.enrich import enrich_candidates
 from discogs.recommend.scoring import DEFAULT_WEIGHTS, ScoredCandidate, score_candidates
 from discogs.recommend.seeds import SeedArtist, select_seeds
 
@@ -49,6 +50,7 @@ def run_recommend(
     llm: LLMClient | None = None,
     with_influences: bool = True,
     top_k_seeds_for_influences: int = 20,
+    with_enrichment: bool = True,
 ) -> RunResult:
     """Run the full Phase 2 recommendation pipeline. Dry-run only (no wantlist writes)."""
     weights = weights or DEFAULT_WEIGHTS
@@ -60,6 +62,7 @@ def run_recommend(
         "budget": budget,
         "with_influences": with_influences,
         "top_k_seeds_for_influences": top_k_seeds_for_influences,
+        "with_enrichment": with_enrichment,
     }
     run_id, display_id = store.start_run(args)
 
@@ -103,6 +106,13 @@ def run_recommend(
             store=store, candidate_paths=candidate_paths,
             releases=releases, label_release_counts=label_counts, weights=weights,
         )
+
+        if with_enrichment and llm is not None and scored:
+            head = scored[: max_recs * 2]
+            tail = scored[max_recs * 2 :]
+            enriched_head = enrich_candidates(llm, head, releases)
+            enriched_head.sort(key=lambda s: -s.score)
+            scored = enriched_head + tail
 
         picks = _apply_diversity(scored, max_recs=max_recs, max_per_artist=max_per_artist)
 
