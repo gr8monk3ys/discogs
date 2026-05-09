@@ -29,6 +29,17 @@ discogs status
 
 Get a personal access token at <https://www.discogs.com/settings/developers>.
 
+## Recommendations (Phase 2)
+
+After your first sync:
+
+```bash
+discogs recommend
+# Wrote digest: ~/.discogs/digests/2026-05-08-183045-recommendations.md
+```
+
+Open the digest to review the top picks. Each pick lists the seed artist that surfaced it, the label, format, community stats, and styles. Phase 2 picks are scored on 8 sub-scores in `[0, 0.85]` — the missing 0.15 is `influence_chain_score`, populated in Phase 3.
+
 ## Config
 
 `~/.discogs/config.toml`:
@@ -51,6 +62,7 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs auth set` | Save token to `~/.discogs/config.toml` (chmod 600) |
 | `discogs sync [--scope collection\|wantlist\|both] [--force]` | Sync into local cache. 24h TTL by default. |
 | `discogs status` | Show username, cache size, last sync, API budget |
+| `discogs recommend [--max-recs 25] [--budget 800] [--scope ...]` | Generate top-N picks; writes a markdown digest under `~/.discogs/digests/`. Dry-run only in Phase 2. |
 
 ## Development
 

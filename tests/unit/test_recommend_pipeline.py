@@ -8,10 +8,10 @@ import pytest
 from discogs.api.client import DiscogsClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
-from discogs.models import CollectionItem, Credit, Format, Release
+from discogs.models import Format, Release
 from discogs.recommend.graph import GraphPath
 from discogs.recommend.pipeline import RunResult, run_recommend
-from discogs.recommend.scoring import DEFAULT_WEIGHTS, ScoredCandidate
+from discogs.recommend.scoring import ScoredCandidate
 from discogs.recommend.seeds import SeedArtist
 
 

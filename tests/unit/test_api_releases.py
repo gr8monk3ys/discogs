@@ -39,8 +39,12 @@ def _fake_raw_release(rid: int = 100) -> MagicMock:
     raw.community.rating.average = 4.6
     raw.community.rating.count = 320
 
-    p1 = MagicMock(); p1.id = 1; p1.role = "Tenor Saxophone"
-    p2 = MagicMock(); p2.id = 2; p2.role = "Producer"
+    p1 = MagicMock()
+    p1.id = 1
+    p1.role = "Tenor Saxophone"
+    p2 = MagicMock()
+    p2.id = 2
+    p2.role = "Producer"
     raw.extraartists = [p1, p2]
     raw.tracklist = []
 
@@ -122,7 +126,9 @@ def test_fetch_release_includes_track_extraartists(setup) -> None:
     _, store, client = setup
     raw = _fake_raw_release(rid=100)
     track = MagicMock()
-    p3 = MagicMock(); p3.id = 3; p3.role = "Bass"
+    p3 = MagicMock()
+    p3.id = 3
+    p3.role = "Bass"
     track.extraartists = [p3]
     raw.tracklist = [track]
     client.upstream.release.return_value = raw
