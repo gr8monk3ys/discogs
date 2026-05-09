@@ -47,6 +47,7 @@ def _fake_raw_release(rid: int = 100) -> MagicMock:
     label = MagicMock()
     label.id = 101
     label.data = {"catno": "AS-9181"}
+    label.catno = "AS-9181"
     raw.labels = [label]
 
     return raw

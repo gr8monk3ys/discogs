@@ -34,6 +34,8 @@ def fetch_release(
 
 
 def _release_from_raw(raw: Any) -> Release:
+    community = getattr(raw, "community", None)
+    rating = getattr(community, "rating", None) if community is not None else None
     return Release(
         id=int(raw.id),
         master_id=int(raw.master_id) if getattr(raw, "master_id", None) else None,
@@ -50,10 +52,10 @@ def _release_from_raw(raw: Any) -> Release:
         ],
         styles=list(getattr(raw, "styles", None) or []),
         genres=list(getattr(raw, "genres", None) or []),
-        community_have=int(raw.community.have or 0),
-        community_want=int(raw.community.want or 0),
-        community_avg_rating=float(raw.community.rating.average or 0.0),
-        community_rating_count=int(raw.community.rating.count or 0),
+        community_have=int(getattr(community, "have", None) or 0),
+        community_want=int(getattr(community, "want", None) or 0),
+        community_avg_rating=float(getattr(rating, "average", None) or 0.0),
+        community_rating_count=int(getattr(rating, "count", None) or 0),
         fetched_at=datetime.now(UTC),
     )
 
@@ -83,6 +85,6 @@ def _credits_from_raw(raw: Any, release_id: int) -> list[Credit]:
 def _labels_from_raw(raw: Any) -> list[tuple[int, str | None]]:
     out: list[tuple[int, str | None]] = []
     for label in getattr(raw, "labels", None) or []:
-        catno = label.data.get("catno") if hasattr(label, "data") else None
+        catno = getattr(label, "catno", None)
         out.append((int(label.id), catno))
     return out
