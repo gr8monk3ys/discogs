@@ -8,7 +8,6 @@ from discogs.api.llm import LLMClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.recommend.influences import (
-    InfluenceCandidate,
     fetch_influences_from_claude,
 )
 

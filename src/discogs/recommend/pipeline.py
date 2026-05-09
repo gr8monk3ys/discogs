@@ -11,12 +11,11 @@ from discogs.api.releases import fetch_release
 from discogs.cache.store import CacheStore
 from discogs.config import Config
 from discogs.models import Release
+from discogs.recommend.enrich import enrich_candidates
 from discogs.recommend.graph import walk_credit_graph
 from discogs.recommend.influences import expand_influences
-from discogs.recommend.enrich import enrich_candidates
 from discogs.recommend.scoring import DEFAULT_WEIGHTS, ScoredCandidate, score_candidates
 from discogs.recommend.seeds import SeedArtist, select_seeds
-
 
 _INFLUENCE_DECAY = 0.6
 _CONFIDENCE_FACTOR = {"high": 1.0, "medium": 0.7, "low": 0.4}

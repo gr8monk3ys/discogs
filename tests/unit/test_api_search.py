@@ -61,6 +61,8 @@ def test_resolve_handles_missing_score_field(setup) -> None:
     """If the search API doesn't include a score field, treat as 0 and reject."""
     _, client = setup
     h = MagicMock()
-    h.id = 1; h.title = "X"; h.data = {}
+    h.id = 1
+    h.title = "X"
+    h.data = {}
     client.upstream.search.return_value = [h]
     assert resolve_artist_name(client, "X", min_score=0.85) is None

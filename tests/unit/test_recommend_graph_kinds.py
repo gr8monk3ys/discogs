@@ -9,7 +9,7 @@ from discogs.api.client import DiscogsClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.models import Credit, Format, Release
-from discogs.recommend.graph import GraphPath, walk_credit_graph
+from discogs.recommend.graph import walk_credit_graph
 from discogs.recommend.seeds import SeedArtist
 
 

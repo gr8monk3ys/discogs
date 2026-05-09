@@ -11,7 +11,6 @@ from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.models import ArtistInfluence
 from discogs.recommend.pipeline import run_recommend
-from discogs.recommend.scoring import ScoredCandidate
 from discogs.recommend.seeds import SeedArtist
 
 

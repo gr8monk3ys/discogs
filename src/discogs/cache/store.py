@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from discogs.models import (
-        Artist, ArtistInfluence, CollectionItem, Credit, Label, Release, WantlistItem,
+        Artist,
+        ArtistInfluence,
+        CollectionItem,
+        Credit,
+        Label,
+        Release,
+        WantlistItem,
     )
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
@@ -432,7 +438,7 @@ class CacheStore:
         return int(row["count"]) if row else 0
 
     def replace_artist_influences(
-        self, source_artist_id: int, edges: list["ArtistInfluence"], *,
+        self, source_artist_id: int, edges: list[ArtistInfluence], *,
         source: str = "claude",
     ) -> None:
         """Replace influence edges for a (source_artist_id, source) pair atomically.
@@ -456,7 +462,7 @@ class CacheStore:
                 ],
             )
 
-    def get_artist_influences(self, source_artist_id: int) -> list["ArtistInfluence"]:
+    def get_artist_influences(self, source_artist_id: int) -> list[ArtistInfluence]:
         from discogs.models import ArtistInfluence
         rows = self.conn.execute(
             "SELECT source_artist_id, influence_artist_id, confidence, source, fetched_at "
