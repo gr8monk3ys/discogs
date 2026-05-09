@@ -104,3 +104,11 @@ class WantlistItem(BaseModel):
     release_id: int
     date_added: datetime
     notes: str | None
+
+
+class ArtistInfluence(BaseModel):
+    source_artist_id: int
+    influence_artist_id: int
+    confidence: str  # 'high' | 'medium' | 'low'
+    source: str = "claude"
+    fetched_at: datetime

@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from discogs.models import Artist, CollectionItem, Credit, Label, Release, WantlistItem
+    from discogs.models import (
+        Artist, ArtistInfluence, CollectionItem, Credit, Label, Release, WantlistItem,
+    )
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 CURRENT_SCHEMA_VERSION = 1
@@ -428,3 +430,56 @@ class CacheStore:
             "SELECT count FROM _llm_call_counts WHERE day = ?", (today,)
         ).fetchone()
         return int(row["count"]) if row else 0
+
+    def replace_artist_influences(
+        self, source_artist_id: int, edges: list["ArtistInfluence"], *,
+        source: str = "claude",
+    ) -> None:
+        """Replace influence edges for a (source_artist_id, source) pair atomically.
+
+        edges with a different `source` value are inserted alongside (no delete).
+        """
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM artist_influences "
+                "WHERE source_artist_id = ? AND source = ?",
+                (source_artist_id, source),
+            )
+            self.conn.executemany(
+                "INSERT INTO artist_influences "
+                "(source_artist_id, influence_artist_id, confidence, source, fetched_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (e.source_artist_id, e.influence_artist_id, e.confidence, e.source,
+                     e.fetched_at.isoformat())
+                    for e in edges
+                ],
+            )
+
+    def get_artist_influences(self, source_artist_id: int) -> list["ArtistInfluence"]:
+        from discogs.models import ArtistInfluence
+        rows = self.conn.execute(
+            "SELECT source_artist_id, influence_artist_id, confidence, source, fetched_at "
+            "FROM artist_influences WHERE source_artist_id = ?",
+            (source_artist_id,),
+        )
+        return [
+            ArtistInfluence(
+                source_artist_id=r["source_artist_id"],
+                influence_artist_id=r["influence_artist_id"],
+                confidence=r["confidence"],
+                source=r["source"],
+                fetched_at=datetime.fromisoformat(r["fetched_at"]),
+            )
+            for r in rows
+        ]
+
+    def artist_influences_age(self, source_artist_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT MIN(fetched_at) AS oldest FROM artist_influences "
+            "WHERE source_artist_id = ?",
+            (source_artist_id,),
+        ).fetchone()
+        if row is None or row["oldest"] is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["oldest"])
