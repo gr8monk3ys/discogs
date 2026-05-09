@@ -381,3 +381,32 @@ class CacheStore:
             int(r["release_id"])
             for r in self.conn.execute("SELECT DISTINCT release_id FROM recommendation_history")
         }
+
+    def replace_artist_top_releases(self, artist_id: int, release_ids: list[int]) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM artist_top_releases WHERE artist_id = ?", (artist_id,)
+            )
+            self.conn.executemany(
+                "INSERT INTO artist_top_releases (artist_id, release_id, rank, fetched_at) "
+                "VALUES (?, ?, ?, ?)",
+                [(artist_id, rid, rank, now) for rank, rid in enumerate(release_ids)],
+            )
+
+    def get_artist_top_release_ids(self, artist_id: int) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT release_id FROM artist_top_releases "
+            "WHERE artist_id = ? ORDER BY rank ASC",
+            (artist_id,),
+        )
+        return [int(r["release_id"]) for r in rows]
+
+    def artist_top_releases_age(self, artist_id: int) -> timedelta | None:
+        row = self.conn.execute(
+            "SELECT MIN(fetched_at) AS oldest FROM artist_top_releases WHERE artist_id = ?",
+            (artist_id,),
+        ).fetchone()
+        if row is None or row["oldest"] is None:
+            return None
+        return datetime.now(UTC) - datetime.fromisoformat(row["oldest"])
