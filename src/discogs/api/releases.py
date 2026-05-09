@@ -11,6 +11,36 @@ from discogs.models import Credit, Format, Release
 RELEASE_TTL = timedelta(days=30)
 
 
+def _safe_fetch(obj: Any, field: str) -> Any:
+    """Try obj.fetch(field) first (real Discogs object), fall back to getattr.
+
+    python3-discogs-client exposes data fields via fetch(field) rather than as
+    Python attribute descriptors.  getattr therefore returns None for fields that
+    aren't declared as SimpleField descriptors.  We call fetch() when available
+    and trust the result only when it is a plain scalar (str, int, float, or None);
+    a MagicMock return (from test mocks) is not a scalar, so we fall through to
+    getattr which *does* find the attribute the test fixture set directly.
+    """
+    if hasattr(obj, "fetch"):
+        try:
+            v = obj.fetch(field)
+            if isinstance(v, (str, int, float, type(None))):
+                return v
+        except (KeyError, AttributeError, TypeError):
+            pass
+    return getattr(obj, field, None)
+
+
+def _int_or_none(v: Any) -> int | None:
+    """Convert v to int, returning None for None or un-convertible values."""
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_release(
     client: DiscogsClient, store: CacheStore, release_id: int
 ) -> Release:
@@ -38,7 +68,7 @@ def _release_from_raw(raw: Any) -> Release:
     rating = getattr(community, "rating", None) if community is not None else None
     return Release(
         id=int(raw.id),
-        master_id=int(raw.master_id) if getattr(raw, "master_id", None) else None,
+        master_id=_int_or_none(_safe_fetch(raw, "master_id")),
         title=str(raw.title),
         year=int(getattr(raw, "year", 0) or 0),
         country=getattr(raw, "country", None),

@@ -11,6 +11,26 @@ from discogs.models import Artist
 ARTIST_TTL = timedelta(days=30)
 
 
+def _ref_type(ref: Any) -> str:
+    """Return the type string of an artist-discography reference ('release' or 'master').
+
+    python3-discogs-client doesn't expose `type` as a SimpleField descriptor on
+    Release/Master objects, so plain attribute access via getattr returns the default
+    rather than the real value.  Use fetch("type") which reads from the underlying
+    data dict.  The isinstance guard ensures that MagicMock returns (which are not
+    plain strings) fall through to the getattr fallback used by test mocks that set
+    .type directly.
+    """
+    if hasattr(ref, "fetch"):
+        try:
+            t = ref.fetch("type")
+            if isinstance(t, str):
+                return t
+        except (KeyError, AttributeError, TypeError):
+            pass
+    return str(getattr(ref, "type", "release"))
+
+
 def fetch_artist(client: DiscogsClient, store: CacheStore, artist_id: int) -> Artist:
     age = store.artist_age(artist_id)
     if age is not None and age < ARTIST_TTL:
@@ -57,7 +77,8 @@ def fetch_artist_releases(
     for i, ref in enumerate(raw.releases):
         if i >= page_size:
             break
-        if getattr(ref, "type", "release") != "release":
+        ref_type = _ref_type(ref)
+        if ref_type != "release":
             continue
         rids.append(int(ref.id))
         if len(rids) >= top_k:
