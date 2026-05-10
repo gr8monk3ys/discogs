@@ -112,3 +112,28 @@ def test_recommend_apply_reports_failures(tmp_path: Path,
     assert result.exit_code == 0  # partial success is still success
     assert "42" in result.output
     assert "HTTP 500" in result.output
+
+
+def test_recommend_apply_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.client import BudgetExceeded
+
+    fake_store = MagicMock()
+    fake_store.has_any_apply.return_value = True
+
+    with patch("discogs.cli.commands.recommend._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.recommend.run_recommend",
+               return_value=_empty_run()), \
+         patch("discogs.cli.commands.recommend.render_digest", return_value=""), \
+         patch("discogs.cli.commands.recommend.apply_run") as ar:
+        ar.side_effect = BudgetExceeded("Daily Discogs API budget of 800 exceeded.")
+        result = CliRunner().invoke(cli, ["recommend", "--apply", "--yes"])
+
+    assert result.exit_code != 0
+    assert "budget" in result.output.lower()
+    # Should be a clean error, not a Python traceback:
+    assert "Traceback" not in result.output

@@ -22,6 +22,9 @@ def test_undo_last_batch_resolves_via_helper(tmp_path: Path,
 
     fake_store = MagicMock()
     fake_store.last_applied_run_id.return_value = "u-uuid"
+    fake_store.get_recommendations_for_run.return_value = [
+        {"release_id": i, "applied_to_wantlist": 1} for i in range(1, 4)
+    ]
 
     with patch("discogs.cli.commands.undo_cmd._build_pipeline_context",
                return_value=(MagicMock(), fake_store, load_config())), \
@@ -58,6 +61,11 @@ def test_undo_specific_run(tmp_path: Path,
 
     fake_store = MagicMock()
     fake_store.get_run_by_display_id.return_value = "u-uuid"
+    fake_store.get_recommendations_for_run.return_value = [
+        {"release_id": 1, "applied_to_wantlist": 1},
+        {"release_id": 2, "applied_to_wantlist": 1},
+        {"release_id": 3, "applied_to_wantlist": 1},
+    ]
 
     with patch("discogs.cli.commands.undo_cmd._build_pipeline_context",
                return_value=(MagicMock(), fake_store, load_config())), \
@@ -93,7 +101,10 @@ def test_undo_prompts_unless_yes(tmp_path: Path,
 
     fake_store = MagicMock()
     fake_store.last_applied_run_id.return_value = "u-uuid"
-    fake_store.get_recommendations_for_run.return_value = [{"release_id": 1}, {"release_id": 2}]
+    fake_store.get_recommendations_for_run.return_value = [
+        {"release_id": 1, "applied_to_wantlist": 1},
+        {"release_id": 2, "applied_to_wantlist": 1},
+    ]
 
     with patch("discogs.cli.commands.undo_cmd._build_pipeline_context",
                return_value=(MagicMock(), fake_store, load_config())), \
@@ -102,3 +113,51 @@ def test_undo_prompts_unless_yes(tmp_path: Path,
 
     ur.assert_not_called()
     assert "cancel" in result.output.lower()
+
+
+def test_undo_command_skips_when_nothing_applied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+
+    fake_store = MagicMock()
+    fake_store.last_applied_run_id.return_value = "u-uuid"
+    # Picks exist but nothing currently applied (already undone)
+    fake_store.get_recommendations_for_run.return_value = [
+        {"applied_to_wantlist": 0, "release_id": 1},
+        {"applied_to_wantlist": 0, "release_id": 2},
+    ]
+
+    with patch("discogs.cli.commands.undo_cmd._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.undo_cmd.undo_run") as ur:
+        result = CliRunner().invoke(cli, ["undo-last-batch", "--yes"])
+
+    assert result.exit_code == 0
+    assert "nothing" in result.output.lower() or "no" in result.output.lower()
+    ur.assert_not_called()
+
+
+def test_undo_command_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.client import BudgetExceeded
+
+    fake_store = MagicMock()
+    fake_store.last_applied_run_id.return_value = "u-uuid"
+    fake_store.get_recommendations_for_run.return_value = [
+        {"applied_to_wantlist": 1, "release_id": 1},
+    ]
+
+    with patch("discogs.cli.commands.undo_cmd._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.undo_cmd.undo_run") as ur:
+        ur.side_effect = BudgetExceeded("Daily Discogs API budget of 800 exceeded.")
+        result = CliRunner().invoke(cli, ["undo-last-batch", "--yes"])
+
+    assert result.exit_code != 0
+    assert "budget" in result.output.lower()
+    assert "Traceback" not in result.output

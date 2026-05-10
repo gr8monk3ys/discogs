@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import click
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
 from discogs.recommend.apply import undo_run
@@ -22,15 +22,27 @@ def _confirm_and_undo(
     run_id: str, label: str, skip_confirm: bool,
 ) -> None:
     picks = store.get_recommendations_for_run(run_id)
+    applied = [p for p in picks if p["applied_to_wantlist"]]
+    if not applied:
+        click.echo(f"Run {label}: nothing currently applied to undo.")
+        return
+
     if not skip_confirm and not click.confirm(
-        f"\nUndo will remove {len(picks)} picks from run {label} "
+        f"\nUndo will remove {len(applied)} picks from run {label} "
         f"from your Discogs wantlist. Proceed?",
         default=False,
     ):
         click.echo("Cancelled.")
         return
 
-    report = undo_run(client, store, username=cfg.discogs_username, run_id=run_id)
+    try:
+        report = undo_run(client, store, username=cfg.discogs_username, run_id=run_id)
+    except BudgetExceeded as e:
+        raise click.ClickException(
+            f"Daily Discogs API budget exhausted ({e}). "
+            f"Removals so far were saved. Re-run tomorrow, or raise "
+            f"daily_api_budget in ~/.discogs/config.toml."
+        ) from e
     click.echo(
         f"Undone run {label}: "
         f"removed {report.removed}, skipped {report.skipped}, errors {report.errors}."

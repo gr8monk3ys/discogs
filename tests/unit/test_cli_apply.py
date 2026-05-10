@@ -23,6 +23,9 @@ def test_apply_command_resolves_display_id(tmp_path: Path,
     fake_store = MagicMock()
     fake_store.get_run_by_display_id.return_value = "u-uuid"
     fake_store.has_any_apply.return_value = True
+    fake_store.get_recommendations_for_run.return_value = [
+        {"release_id": i, "applied_to_wantlist": 0} for i in range(1, 6)
+    ]
 
     with patch("discogs.cli.commands.apply_cmd._build_pipeline_context",
                return_value=(MagicMock(), fake_store, load_config())), \
@@ -60,7 +63,7 @@ def test_apply_command_first_time_prompts(tmp_path: Path,
     fake_store = MagicMock()
     fake_store.get_run_by_display_id.return_value = "u-uuid"
     fake_store.has_any_apply.return_value = False
-    fake_store.get_recommendations_for_run.return_value = [{"release_id": 1}]
+    fake_store.get_recommendations_for_run.return_value = [{"release_id": 1, "applied_to_wantlist": 0}]
 
     with patch("discogs.cli.commands.apply_cmd._build_pipeline_context",
                return_value=(MagicMock(), fake_store, load_config())), \
@@ -69,3 +72,54 @@ def test_apply_command_first_time_prompts(tmp_path: Path,
 
     ar.assert_not_called()
     assert "cancel" in result.output.lower()
+
+
+def test_apply_command_skips_when_all_already_applied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+
+    fake_store = MagicMock()
+    fake_store.get_run_by_display_id.return_value = "u-uuid"
+    fake_store.has_any_apply.return_value = True
+    # All 3 picks are already applied
+    fake_store.get_recommendations_for_run.return_value = [
+        {"applied_to_wantlist": 1, "release_id": 1},
+        {"applied_to_wantlist": 1, "release_id": 2},
+        {"applied_to_wantlist": 1, "release_id": 3},
+    ]
+
+    with patch("discogs.cli.commands.apply_cmd._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.apply_cmd.apply_run") as ar:
+        result = CliRunner().invoke(cli, ["apply", "2026-05-09-1830"])
+
+    assert result.exit_code == 0
+    assert "already applied" in result.output.lower()
+    ar.assert_not_called()
+
+
+def test_apply_command_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.client import BudgetExceeded
+
+    fake_store = MagicMock()
+    fake_store.get_run_by_display_id.return_value = "u-uuid"
+    fake_store.has_any_apply.return_value = True
+    fake_store.get_recommendations_for_run.return_value = [
+        {"applied_to_wantlist": 0, "release_id": 1},
+    ]
+
+    with patch("discogs.cli.commands.apply_cmd._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.apply_cmd.apply_run") as ar:
+        ar.side_effect = BudgetExceeded("Daily Discogs API budget of 800 exceeded.")
+        result = CliRunner().invoke(cli, ["apply", "2026-05-09-1830"])
+
+    assert result.exit_code != 0
+    assert "budget" in result.output.lower()
+    assert "Traceback" not in result.output

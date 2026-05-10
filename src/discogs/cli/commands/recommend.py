@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import click
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.api.llm import LLMClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
@@ -97,7 +97,14 @@ def recommend_cmd(
                 return
 
             click.echo(f"\nApplying picks for run {result.run_display_id}...")
-            ar = apply_run(client, store, username=cfg.discogs_username, run_id=result.run_id)
+            try:
+                ar = apply_run(client, store, username=cfg.discogs_username, run_id=result.run_id)
+            except BudgetExceeded as e:
+                raise click.ClickException(
+                    f"Daily Discogs API budget exhausted ({e}). "
+                    f"Successes so far were saved. Re-run tomorrow, or raise "
+                    f"daily_api_budget in ~/.discogs/config.toml."
+                ) from e
             click.echo(f"  Applied {ar.successes} successes, {ar.failures} failures.")
             if ar.failures:
                 click.echo("  Failed picks:")

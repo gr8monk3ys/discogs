@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import click
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
 from discogs.recommend.apply import apply_run
@@ -34,8 +34,13 @@ def apply_cmd(run_display_id: str, skip_confirm: bool) -> None:
             click.echo(f"Run {run_display_id} has no picks to apply.")
             return
 
+        pending = [p for p in picks if not p["applied_to_wantlist"]]
+        if not pending:
+            click.echo(f"Run {run_display_id}: all {len(picks)} picks already applied — nothing to do.")
+            return
+
         if not store.has_any_apply() and not skip_confirm and not click.confirm(
-            f"\nThis will push {len(picks)} releases from run {run_display_id} "
+            f"\nThis will push {len(pending)} releases from run {run_display_id} "
             f"to your Discogs wantlist. First-time apply requires confirmation. "
             f"Proceed?",
             default=False,
@@ -43,7 +48,14 @@ def apply_cmd(run_display_id: str, skip_confirm: bool) -> None:
             click.echo("Cancelled.")
             return
 
-        report = apply_run(client, store, username=cfg.discogs_username, run_id=run_id)
+        try:
+            report = apply_run(client, store, username=cfg.discogs_username, run_id=run_id)
+        except BudgetExceeded as e:
+            raise click.ClickException(
+                f"Daily Discogs API budget exhausted ({e}). "
+                f"Successes so far were saved. Re-run tomorrow, or raise "
+                f"daily_api_budget in ~/.discogs/config.toml."
+            ) from e
         click.echo(
             f"Applied run {run_display_id}: "
             f"{report.successes} successes, {report.failures} failures, "
