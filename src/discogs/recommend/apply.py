@@ -1,4 +1,4 @@
-"""Apply orchestrator: push a run's picks to the user's Discogs wantlist."""
+"""Apply and undo orchestrators for a recommendation run's wantlist writes."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
