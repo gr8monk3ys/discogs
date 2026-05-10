@@ -118,6 +118,32 @@ def test_max_recs_limits_picks(setup) -> None:
     assert len(result.picks) == 10
 
 
+def test_budget_arg_caps_release_load_phase(setup) -> None:
+    """--budget bounds the WHOLE recommend run, not just the graph walk."""
+    cfg, store, client = setup
+    captured: dict[str, int] = {}
+
+    def fake_walk(*_a, **_kw):  # type: ignore[no-untyped-def]
+        # Simulate the graph walk consuming 7 calls before _load_releases runs.
+        store.increment_api_calls(7)
+        return {10: [GraphPath(1, 1.0, ((1, 10, "direct"),), 1.0)]}
+
+    def fake_load(_c, _s, _ids, *, budget_left: int) -> dict[int, Release]:
+        captured["budget_left"] = budget_left
+        return {}
+
+    with patch("discogs.recommend.pipeline.select_seeds") as ss, \
+         patch("discogs.recommend.pipeline.walk_credit_graph", side_effect=fake_walk), \
+         patch("discogs.recommend.pipeline.score_candidates", return_value=[]), \
+         patch("discogs.recommend.pipeline._load_releases", side_effect=fake_load), \
+         patch("discogs.recommend.pipeline._load_label_counts", return_value={}):
+        ss.return_value = [SeedArtist(artist_id=1, weight=1.0, sources=("collection",))]
+        run_recommend(client, store, cfg, max_recs=5, budget=20)
+
+    # budget=20, 7 consumed by graph walk → 13 left for the load phase.
+    assert captured["budget_left"] == 13
+
+
 def test_no_picks_when_no_seeds(setup) -> None:
     cfg, store, client = setup
     with patch("discogs.recommend.pipeline.select_seeds", return_value=[]):

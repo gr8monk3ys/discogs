@@ -95,9 +95,10 @@ def run_recommend(
         )
 
         # After the graph walk, fill in any candidates whose full release detail isn't
-        # cached yet. Cap to whatever's left of the user's daily API budget so we can't
-        # blow past it from the load phase.
-        release_load_budget = max(0, config.daily_api_budget - store.api_calls_today())
+        # cached yet. Cap to whatever's left of the user's --budget for this run so the
+        # total spend honors their request (the graph walk shares the same pool).
+        spent_so_far = store.api_calls_today() - api_calls_at_start
+        release_load_budget = max(0, budget - spent_so_far)
         releases = _load_releases(client, store, list(candidate_paths.keys()), budget_left=release_load_budget)
         label_counts = _load_label_counts(store, list(candidate_paths.keys()))
 
