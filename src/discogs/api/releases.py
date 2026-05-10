@@ -148,6 +148,9 @@ def _credits_from_raw(raw: Any, release_id: int) -> list[Credit]:
 def _labels_from_raw(raw: Any) -> list[tuple[int, str | None]]:
     out: list[tuple[int, str | None]] = []
     for label in getattr(raw, "labels", None) or []:
+        label_id = getattr(label, "id", None)
+        if label_id is None:
+            continue
         catno = getattr(label, "catno", None)
-        out.append((int(label.id), catno))
+        out.append((int(label_id), catno))
     return out
