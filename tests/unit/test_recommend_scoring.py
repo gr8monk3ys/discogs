@@ -83,6 +83,24 @@ def test_album_format_beats_single(store: CacheStore) -> None:
     assert scored[1].subscores["format"] > scored[2].subscores["format"]
 
 
+def test_zero_label_count_does_not_divide_by_zero(store: CacheStore) -> None:
+    """Regression: when all releases have label_count=0, scoring must not crash."""
+    paths = {
+        100: [GraphPath(seed_artist_id=1, seed_weight=0.9,
+                        edge_chain=((1, 100, "direct"),), edge_weight=1.0)],
+    }
+    scored = score_candidates(
+        store=store,
+        candidate_paths=paths,
+        releases={100: _release(100, have=0)},  # also forces max_have=0
+        label_release_counts={100: 0},          # forces max_label_count=0
+        weights=DEFAULT_WEIGHTS,
+    )
+    assert len(scored) == 1
+    s = scored[0]
+    assert 0.0 <= s.score <= 1.0
+
+
 def test_low_rating_count_zeros_rating_subscore(store: CacheStore) -> None:
     paths = {1: [GraphPath(1, 0.9, ((1, 1, "direct"),), 1.0)]}
     releases = {1: _release(1, rating=4.9, rating_count=2)}  # < threshold of 5

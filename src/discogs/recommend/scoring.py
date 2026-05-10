@@ -71,8 +71,8 @@ def score_candidates(
     max_infl = max(raw_influences.values()) or 1.0
 
     have_values = [releases[rid].community_have for rid in candidate_paths if rid in releases]
-    max_have = max(have_values) if have_values else 1
-    max_label_count = max(label_release_counts.values()) if label_release_counts else 1
+    max_have = (max(have_values) if have_values else 1) or 1
+    max_label_count = (max(label_release_counts.values()) if label_release_counts else 1) or 1
 
     scored: list[ScoredCandidate] = []
 
