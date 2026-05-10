@@ -162,11 +162,11 @@ def _load_releases(
     """Load full Release objects for scoring. Cache hits cost 0; misses spend API budget."""
     out: dict[int, Release] = {}
     for rid in release_ids:
-        if budget_left <= 0:
-            break
         cached = store.get_release(rid)
         if cached is not None:
             out[rid] = cached
+            continue
+        if budget_left <= 0:
             continue
         out[rid] = fetch_release(client, store, rid)
         budget_left -= 1

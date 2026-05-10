@@ -118,6 +118,17 @@ def test_max_recs_limits_picks(setup) -> None:
     assert len(result.picks) == 10
 
 
+def test_load_releases_returns_cached_even_when_budget_exhausted(setup) -> None:
+    """Cached releases are free — the budget check must not block them."""
+    from discogs.recommend.pipeline import _load_releases
+    cfg, store, client = setup
+    # Pre-cache release 10, leave 20 uncached.
+    store.upsert_release(_release(10))
+    out = _load_releases(client, store, [10, 20], budget_left=0)
+    assert 10 in out  # cached → returned despite zero budget
+    assert 20 not in out  # uncached + zero budget → skipped (no API call)
+
+
 def test_budget_arg_caps_release_load_phase(setup) -> None:
     """--budget bounds the WHOLE recommend run, not just the graph walk."""
     cfg, store, client = setup
