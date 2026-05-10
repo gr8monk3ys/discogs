@@ -77,7 +77,11 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs auth set` | Save token to `~/.discogs/config.toml` (chmod 600) |
 | `discogs sync [--scope collection\|wantlist\|both] [--force]` | Sync into local cache. 24h TTL by default. |
 | `discogs status` | Show username, cache size, last sync, API budget |
-| `discogs recommend [--max-recs 25] [--budget 800] [--scope ...] [--no-influences] [--no-enrich]` | Generate top-N picks; writes a markdown digest under `~/.discogs/digests/`. With Claude influence expansion + editorial notes when an Anthropic key is configured. Dry-run only in Phase 3. |
+| `discogs recommend [--max-recs 25] [--budget 800] [--scope ...] [--no-influences] [--no-enrich]` | Generate top-N picks; writes a markdown digest under `~/.discogs/digests/`. With Claude influence expansion + editorial notes when an Anthropic key is configured. Dry-run by default; pass `--apply` to also push to your wantlist. |
+| `discogs recommend --apply [--yes]` | Generate picks AND push to wantlist. First-ever apply requires interactive confirm; `--yes` bypasses for scripts. |
+| `discogs apply <run-display-id> [--yes]` | Apply a previously-generated run's picks to your wantlist. |
+| `discogs undo-last-batch [--yes]` | Remove the most recently applied batch from your wantlist. |
+| `discogs undo <run-display-id> [--yes]` | Remove a specific run's applied picks from your wantlist. |
 
 ## Development
 
@@ -88,3 +92,18 @@ mypy src/                     # types
 ```
 
 See `docs/superpowers/specs/` for the full design and `docs/superpowers/plans/` for the implementation plan.
+
+## Apply / Undo (Phase 4)
+
+The full review-then-commit flow:
+
+    discogs recommend                      # writes digest, no wantlist changes
+    less ~/.discogs/digests/2026-05-09-...md  # review picks
+    discogs apply 2026-05-09-091125        # commits to wantlist (first time prompts y/N)
+    discogs undo-last-batch                 # if you change your mind
+
+Or the one-shot variant:
+
+    discogs recommend --apply --yes
+
+Picks are tracked in `recommendation_history`; the same release is never re-recommended across runs (unless you pass `--allow-rerecommend`, planned for a later phase).

@@ -1,12 +1,13 @@
-"""`discogs recommend` command — Phase 2 dry-run only."""
+"""`discogs recommend` command — generate picks; with --apply, push to wantlist."""
 from __future__ import annotations
 
 import click
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.api.llm import LLMClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
+from discogs.recommend.apply import apply_run
 from discogs.recommend.digest import render_digest
 from discogs.recommend.pipeline import run_recommend
 
@@ -36,15 +37,15 @@ def _build_llm_client(cfg: Config, store: CacheStore) -> LLMClient:
 @click.option("--no-enrich", "no_enrich", is_flag=True,
               help="Skip Stage 4 (Claude editorial notes per pick).")
 @click.option("--apply", "apply_flag", is_flag=True,
-              help="Push picks to your wantlist (NOT YET SUPPORTED — Phase 4).")
+              help="Push picks to your Discogs wantlist after writing the digest.")
+@click.option("--yes", "skip_confirm", is_flag=True,
+              help="Bypass the first-apply confirmation prompt.")
 def recommend_cmd(
     max_recs: int, budget: int, scope: str,
-    no_influences: bool, no_enrich: bool, apply_flag: bool,
+    no_influences: bool, no_enrich: bool,
+    apply_flag: bool, skip_confirm: bool,
 ) -> None:
-    """Generate top-N recommendations and write a markdown digest. Dry-run only."""
-    if apply_flag:
-        raise click.UsageError("--apply is not yet supported (Phase 4).")
-
+    """Generate top-N recommendations and write a markdown digest."""
     client, store, cfg = _build_pipeline_context()
     try:
         llm: LLMClient | None = None
@@ -84,5 +85,33 @@ def recommend_cmd(
             f"selected: {len(result.picks)}  "
             f"API calls: {result.api_calls_used}"
         )
+
+        if apply_flag:
+            if not store.has_any_apply() and not skip_confirm and not click.confirm(
+                f"\nThis will push {len(result.picks)} releases to your "
+                f"Discogs wantlist. First-time apply requires confirmation. "
+                f"Proceed?",
+                default=False,
+            ):
+                click.echo("Apply cancelled. Digest written but no wantlist changes.")
+                return
+
+            click.echo(f"\nApplying picks for run {result.run_display_id}...")
+            try:
+                ar = apply_run(client, store, username=cfg.discogs_username, run_id=result.run_id)
+            except BudgetExceeded as e:
+                raise click.ClickException(
+                    f"Daily Discogs API budget exhausted ({e}). "
+                    f"Successes so far were saved. Re-run tomorrow, or raise "
+                    f"daily_api_budget in ~/.discogs/config.toml."
+                ) from e
+            click.echo(f"  Applied {ar.successes} successes, {ar.failures} failures.")
+            if ar.failures:
+                click.echo("  Failed picks:")
+                for rid, err in ar.failed_picks:
+                    click.echo(f"    - release {rid}: {err}")
+            digest_md_with_apply = render_digest(store, result, apply_report=ar)
+            digest_path.write_text(digest_md_with_apply)
+            click.echo(f"  Updated digest with apply outcome: {digest_path}")
     finally:
         store.close()

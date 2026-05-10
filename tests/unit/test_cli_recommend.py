@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 from discogs.cli.__main__ import cli
+from discogs.config import load_config
 from discogs.recommend.graph import GraphPath
 from discogs.recommend.pipeline import RunResult
 from discogs.recommend.scoring import ScoredCandidate
@@ -32,7 +33,6 @@ def test_recommend_writes_digest_file(tmp_path: Path, monkeypatch: pytest.Monkey
         args={},
     )
 
-    from discogs.config import load_config
     real_cfg = load_config()  # uses tmp_path/.discogs/config.toml since HOME is patched
 
     with patch("discogs.cli.commands.recommend._build_pipeline_context") as bp, \
@@ -58,7 +58,6 @@ def test_recommend_max_recs_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         args={},
     )
 
-    from discogs.config import load_config
     real_cfg = load_config()
 
     with patch("discogs.cli.commands.recommend._build_pipeline_context") as bp, \
@@ -73,10 +72,29 @@ def test_recommend_max_recs_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert kwargs["max_recs"] == 5
 
 
-def test_recommend_does_not_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_recommend_apply_with_yes_succeeds_on_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Phase 2 UsageError is gone — --apply --yes now runs apply_run."""
     monkeypatch.setenv("HOME", str(tmp_path))
     _seed_config(tmp_path)
 
-    result = CliRunner().invoke(cli, ["recommend", "--apply"])
-    assert result.exit_code != 0
-    assert "phase 4" in result.output.lower() or "not yet supported" in result.output.lower()
+    from discogs.recommend.apply import ApplyReport
+    from discogs.recommend.pipeline import RunResult
+
+    fake_store = MagicMock()
+    fake_store.has_any_apply.return_value = True
+
+    empty = RunResult(
+        run_id="r", run_display_id="2026-05-09-1830", picks=[],
+        seed_count=0, candidate_count=0, api_calls_used=0, wall_seconds=0.0, args={},
+    )
+    with patch("discogs.cli.commands.recommend._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.recommend.run_recommend", return_value=empty), \
+         patch("discogs.cli.commands.recommend.render_digest", return_value=""), \
+         patch("discogs.cli.commands.recommend.apply_run",
+               return_value=ApplyReport(run_id="r", successes=0, failures=0)):
+        result = CliRunner().invoke(cli, ["recommend", "--apply", "--yes"])
+
+    assert result.exit_code == 0, result.output

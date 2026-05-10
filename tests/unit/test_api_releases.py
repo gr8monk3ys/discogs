@@ -93,6 +93,20 @@ def test_fetch_release_persists_labels(setup) -> None:
     assert set(store.get_release_label_ids(100)) == {101}
 
 
+def test_fetch_release_skips_label_with_none_id(setup) -> None:
+    """Discogs occasionally returns label entries with id=None — must skip, not crash."""
+    _, store, client = setup
+    raw = _fake_raw_release(rid=100)
+    stub = MagicMock()
+    stub.id = None
+    stub.catno = None
+    raw.labels = [*raw.labels, stub]
+    client.upstream.release.return_value = raw
+
+    fetch_release(client, store, 100)
+    assert set(store.get_release_label_ids(100)) == {101}
+
+
 def test_fetch_release_uses_cache_when_fresh(setup) -> None:
     _, store, client = setup
     raw = _fake_raw_release(rid=100)

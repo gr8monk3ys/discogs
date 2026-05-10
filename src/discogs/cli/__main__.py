@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import click
 
+from discogs.cli.commands.apply_cmd import apply_cmd
 from discogs.cli.commands.auth import auth_group
 from discogs.cli.commands.recommend import recommend_cmd
 from discogs.cli.commands.status import status_cmd
 from discogs.cli.commands.sync_cmd import sync_cmd
+from discogs.cli.commands.undo_cmd import undo_cmd, undo_last_batch_cmd
 
 
 @click.group()
@@ -19,6 +21,9 @@ cli.add_command(auth_group, name="auth")
 cli.add_command(sync_cmd)
 cli.add_command(status_cmd)
 cli.add_command(recommend_cmd)
+cli.add_command(apply_cmd)
+cli.add_command(undo_cmd)
+cli.add_command(undo_last_batch_cmd)
 
 
 def main() -> None:

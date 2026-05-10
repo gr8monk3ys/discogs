@@ -45,3 +45,11 @@ class DiscogsClient:
         result = attr(*args, **kwargs) if callable(attr) else attr
         self._store.increment_api_calls(1)
         return result
+
+    def charge_call(self, n: int = 1) -> None:
+        """Record `n` additional API calls that bypassed `call()`.
+
+        Used by callers that invoke methods on cached `upstream` objects
+        (e.g. `client.call("user", u).wantlist.add(release_id)`).
+        """
+        self._store.increment_api_calls(n)

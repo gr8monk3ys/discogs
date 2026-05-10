@@ -489,3 +489,62 @@ class CacheStore:
         if row is None or row["oldest"] is None:
             return None
         return datetime.now(UTC) - datetime.fromisoformat(row["oldest"])
+
+    # ------------------------------------------------------------------
+    # Phase 4 — apply / undo helpers
+    # ------------------------------------------------------------------
+
+    def get_run_by_display_id(self, display_id: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT id FROM runs WHERE display_id = ?", (display_id,),
+        ).fetchone()
+        return str(row["id"]) if row else None
+
+    def get_recommendations_for_run(self, run_id: str) -> list[sqlite3.Row]:
+        rows = self.conn.execute(
+            "SELECT release_id, score, applied_to_wantlist, applied_at, "
+            "removed_at, removed_reason FROM recommendation_history "
+            "WHERE run_id = ? ORDER BY score DESC",
+            (run_id,),
+        ).fetchall()
+        return list(rows)
+
+    def mark_recommendation_applied(
+        self, run_id: str, release_id: int, applied_at: datetime,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE recommendation_history "
+                "SET applied_to_wantlist = 1, applied_at = ?, "
+                "    removed_at = NULL, removed_reason = NULL "
+                "WHERE run_id = ? AND release_id = ?",
+                (applied_at.isoformat(), run_id, release_id),
+            )
+
+    def mark_recommendation_removed(
+        self, run_id: str, release_id: int, removed_at: datetime, reason: str,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE recommendation_history "
+                "SET applied_to_wantlist = 0, removed_at = ?, removed_reason = ? "
+                "WHERE run_id = ? AND release_id = ?",
+                (removed_at.isoformat(), reason, run_id, release_id),
+            )
+
+    def last_applied_run_id(self) -> str | None:
+        """Return the run_id of the most recently applied batch (latest applied_at)."""
+        row = self.conn.execute(
+            "SELECT run_id FROM recommendation_history "
+            "WHERE applied_at IS NOT NULL "
+            "ORDER BY applied_at DESC LIMIT 1"
+        ).fetchone()
+        return str(row["run_id"]) if row else None
+
+    def has_any_apply(self) -> bool:
+        """True iff any recommendation has ever been applied (drives first-apply confirm)."""
+        row = self.conn.execute(
+            "SELECT 1 FROM recommendation_history "
+            "WHERE applied_at IS NOT NULL LIMIT 1"
+        ).fetchone()
+        return row is not None
