@@ -3,11 +3,17 @@ from __future__ import annotations
 
 from discogs.cache.store import CacheStore
 from discogs.models import Release
+from discogs.recommend.apply import ApplyReport
 from discogs.recommend.pipeline import RunResult
 from discogs.recommend.scoring import ScoredCandidate
 
 
-def render_digest(store: CacheStore, result: RunResult) -> str:
+def render_digest(
+    store: CacheStore,
+    result: RunResult,
+    *,
+    apply_report: ApplyReport | None = None,
+) -> str:
     lines: list[str] = []
     lines.append(f"# Discogs recommendations — {result.run_display_id}\n")
     lines.append(f"Run: `{result.run_display_id}` (uuid: `{result.run_id}`)")
@@ -28,6 +34,18 @@ def render_digest(store: CacheStore, result: RunResult) -> str:
     if result.picks:
         primary_artists = {p.paths[0].seed_artist_id for p in result.picks if p.paths}
         lines.append(f"- Distinct seed artists in selection: {len(primary_artists)}")
+
+    if apply_report is not None:
+        lines.append("")
+        lines.append("## Apply outcome\n")
+        lines.append(f"- {apply_report.successes} successes")
+        lines.append(f"- {apply_report.failures} failures")
+        if apply_report.skipped_already_applied:
+            lines.append(f"- {apply_report.skipped_already_applied} skipped (already applied)")
+        if apply_report.failed_picks:
+            lines.append("\n**Failed picks:**")
+            for rid, err in apply_report.failed_picks:
+                lines.append(f"- release `{rid}`: {err}")
 
     return "\n".join(lines) + "\n"
 

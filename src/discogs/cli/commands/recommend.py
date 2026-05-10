@@ -103,5 +103,8 @@ def recommend_cmd(
                 click.echo("  Failed picks:")
                 for rid, err in ar.failed_picks:
                     click.echo(f"    - release {rid}: {err}")
+            digest_md_with_apply = render_digest(store, result, apply_report=ar)
+            digest_path.write_text(digest_md_with_apply)
+            click.echo(f"  Updated digest with apply outcome: {digest_path}")
     finally:
         store.close()
