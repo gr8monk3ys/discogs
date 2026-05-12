@@ -31,10 +31,18 @@ def _fake_release_ref(rid: int, type_: str = "release") -> MagicMock:
     return r
 
 
+def _fake_artist(artist_id: int = 7, name: str = "Some Artist") -> MagicMock:
+    a = MagicMock()
+    a.id = artist_id
+    a.name = name
+    a.profile = None
+    return a
+
+
 def test_fetch_artist_releases_caches(setup) -> None:
     _, store, client = setup
     refs = [_fake_release_ref(i) for i in range(1, 31)]
-    artist = MagicMock()
+    artist = _fake_artist()
     artist.releases = iter(refs)
     client.upstream.artist.return_value = artist
 
@@ -51,7 +59,7 @@ def test_fetch_artist_releases_filters_non_releases(setup) -> None:
         _fake_release_ref(2, "master"),
         _fake_release_ref(3, "release"),
     ]
-    artist = MagicMock()
+    artist = _fake_artist()
     artist.releases = iter(refs)
     client.upstream.artist.return_value = artist
 
@@ -77,7 +85,7 @@ def test_fetch_artist_releases_refreshes_when_stale(setup) -> None:
             (old, 7),
         )
 
-    artist = MagicMock()
+    artist = _fake_artist()
     artist.releases = iter([_fake_release_ref(99)])
     client.upstream.artist.return_value = artist
 
@@ -85,10 +93,24 @@ def test_fetch_artist_releases_refreshes_when_stale(setup) -> None:
     assert rids == [99]
 
 
+def test_fetch_artist_releases_persists_artist_record(setup) -> None:
+    """Regression: graph walk shouldn't leave artists nameless. fetch_artist_releases
+    already calls the artist endpoint, so it should piggyback the artist row."""
+    _, store, client = setup
+    artist = _fake_artist(artist_id=42, name="Pharoah Sanders")
+    artist.releases = iter([_fake_release_ref(1)])
+    client.upstream.artist.return_value = artist
+
+    fetch_artist_releases(client, store, artist_id=42, top_k=5)
+    cached = store.get_artist(42)
+    assert cached is not None
+    assert cached.name == "Pharoah Sanders"
+
+
 def test_top_k_respects_limit(setup) -> None:
     _, store, client = setup
     refs = [_fake_release_ref(i) for i in range(100)]
-    artist = MagicMock()
+    artist = _fake_artist()
     artist.releases = iter(refs)
     client.upstream.artist.return_value = artist
 

@@ -73,6 +73,7 @@ def fetch_artist_releases(
             return cached[:top_k]
 
     raw = client.call("artist", artist_id)
+    store.upsert_artist(_artist_from_raw(raw))  # piggyback: persist name/profile too
     seen_ids: set[int] = set()
     rids: list[int] = []
     for i, ref in enumerate(raw.releases):
