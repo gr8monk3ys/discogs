@@ -70,17 +70,16 @@ def walk_credit_graph(
     max_neighbors_per_seed: int = 5,
     max_releases_per_neighbor: int = 25,
     budget: int = 800,
+    allow_rerecommend: bool = False,
 ) -> dict[int, list[GraphPath]]:
     """Walk the credit graph from `seeds`, returning candidate releases with their paths.
 
-    Releases already in the user's collection, wantlist, or recommendation history
-    are excluded from the result.
+    Releases already in the user's collection or wantlist are always excluded.
+    Previously-recommended releases are also excluded unless `allow_rerecommend=True`.
     """
-    excluded = (
-        store.collection_release_ids()
-        | store.wantlist_release_ids()
-        | store.previously_recommended_release_ids()
-    )
+    excluded = store.collection_release_ids() | store.wantlist_release_ids()
+    if not allow_rerecommend:
+        excluded |= store.previously_recommended_release_ids()
 
     api_calls_at_start = store.api_calls_today()
 

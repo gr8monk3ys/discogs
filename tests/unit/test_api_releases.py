@@ -50,6 +50,7 @@ def _fake_raw_release(rid: int = 100) -> MagicMock:
 
     label = MagicMock()
     label.id = 101
+    label.name = "Impulse!"
     label.data = {"catno": "AS-9181"}
     label.catno = "AS-9181"
     raw.labels = [label]
@@ -91,6 +92,17 @@ def test_fetch_release_persists_labels(setup) -> None:
 
     fetch_release(client, store, 100)
     assert set(store.get_release_label_ids(100)) == {101}
+
+
+def test_fetch_release_persists_label_records(setup) -> None:
+    """fetch_release should populate the labels table so digests can show names."""
+    _, store, client = setup
+    client.upstream.release.return_value = _fake_raw_release(rid=100)
+
+    fetch_release(client, store, 100)
+    label = store.get_label(101)
+    assert label is not None
+    assert label.name == "Impulse!"
 
 
 def test_fetch_release_skips_label_with_none_id(setup) -> None:

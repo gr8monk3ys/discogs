@@ -35,6 +35,18 @@ def _fake_response(text: str = '{"items":[]}') -> MagicMock:
     return msg
 
 
+def test_llm_client_configures_timeout(cfg: Config, store: CacheStore) -> None:
+    """LLM client should set a finite timeout so a stalled Claude call fails fast."""
+    captured: dict = {}
+
+    def factory(**kwargs):
+        captured.update(kwargs)
+        return MagicMock()
+
+    LLMClient(cfg, store, upstream_factory=factory)
+    assert captured.get("timeout") == 60.0
+
+
 def test_call_increments_budget(cfg: Config, store: CacheStore) -> None:
     upstream = MagicMock()
     upstream.messages.create.return_value = _fake_response()

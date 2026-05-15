@@ -98,3 +98,48 @@ def test_recommend_apply_with_yes_succeeds_on_empty(
         result = CliRunner().invoke(cli, ["recommend", "--apply", "--yes"])
 
     assert result.exit_code == 0, result.output
+
+
+def test_recommend_llm_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LLMBudgetExceeded mid-pipeline must surface as a clean ClickException, not a traceback."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.llm import LLMBudgetExceeded
+
+    fake_store = MagicMock()
+    with patch("discogs.cli.commands.recommend._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.recommend.run_recommend") as rr:
+        rr.side_effect = LLMBudgetExceeded("Daily LLM call budget of 100 exceeded.")
+        result = CliRunner().invoke(cli, ["recommend"])
+
+    assert result.exit_code != 0
+    # Click formats ClickException as "Error: <message>" in stderr-merged output;
+    # bare RuntimeError would surface as "Traceback".
+    assert "Error:" in result.output
+    assert "llm" in result.output.lower() or "anthropic" in result.output.lower()
+    assert "Traceback" not in result.output
+
+
+def test_recommend_discogs_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BudgetExceeded mid-pipeline must surface as a clean ClickException."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.client import BudgetExceeded
+
+    fake_store = MagicMock()
+    with patch("discogs.cli.commands.recommend._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.recommend.run_recommend") as rr:
+        rr.side_effect = BudgetExceeded("Daily Discogs API budget of 1500 exceeded.")
+        result = CliRunner().invoke(cli, ["recommend"])
+
+    assert result.exit_code != 0
+    assert "Error:" in result.output
+    # The wrapped message contains "exhausted" — a phrase only present in our ClickException.
+    assert "exhausted" in result.output.lower()
+    assert "Traceback" not in result.output

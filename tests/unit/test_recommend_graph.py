@@ -143,6 +143,27 @@ def test_walk_excludes_previously_recommended(setup) -> None:
     assert 102 in paths
 
 
+def test_walk_allow_rerecommend_includes_previously_recommended(setup) -> None:
+    """With allow_rerecommend=True, previously-recommended releases re-appear (collection/wantlist still excluded)."""
+    store, client = setup
+    seeds = [SeedArtist(artist_id=7, weight=0.9, sources=("collection",))]
+    rid_prev, _ = store.start_run(args={})
+    store.record_recommendation(rid_prev, release_id=101, score=0.5)
+    store.finish_run(rid_prev, summary={})
+
+    with patch("discogs.recommend.graph.fetch_artist_releases") as far, \
+         patch("discogs.recommend.graph.fetch_release") as fr:
+        far.return_value = [101, 102]
+        fr.side_effect = lambda _c, _s, rid: _stub_release(rid, credits=[])
+        store.replace_release_credits(101, [])
+        store.replace_release_credits(102, [])
+
+        paths = walk_credit_graph(client, store, seeds, budget=100, allow_rerecommend=True)
+
+    assert 101 in paths   # re-recommended release re-appears
+    assert 102 in paths
+
+
 def test_walk_excludes_neighbor_release_in_library(setup) -> None:
     """A release reached via a one-hop neighbor that's already in the wantlist must not appear."""
     store, client = setup

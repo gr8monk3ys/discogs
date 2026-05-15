@@ -6,7 +6,7 @@ from typing import Any
 
 from discogs.api.client import DiscogsClient
 from discogs.cache.store import CacheStore
-from discogs.models import Credit, Format, Release
+from discogs.models import Credit, Format, Label, Release
 
 RELEASE_TTL = timedelta(days=30)
 
@@ -66,6 +66,8 @@ def fetch_release(
     store.upsert_release(release)
     store.replace_release_credits(release_id, _credits_from_raw(raw, release_id))
     store.replace_release_labels(release_id, _labels_from_raw(raw))
+    for label in _label_records_from_raw(raw):
+        store.upsert_label(label)
     return release
 
 
@@ -153,4 +155,21 @@ def _labels_from_raw(raw: Any) -> list[tuple[int, str | None]]:
             continue
         catno = getattr(label, "catno", None)
         out.append((int(label_id), catno))
+    return out
+
+
+def _label_records_from_raw(raw: Any) -> list[Label]:
+    """Extract Label rows from a release's labels[]. parent_label and releases_count
+    aren't on the embedded label object — populate via fetch_label() if you need them."""
+    now = datetime.now(UTC)
+    out: list[Label] = []
+    for label in getattr(raw, "labels", None) or []:
+        label_id = getattr(label, "id", None)
+        name = getattr(label, "name", None)
+        if label_id is None or not name:
+            continue
+        out.append(Label(
+            id=int(label_id), name=str(name),
+            parent_label=None, releases_count=0, fetched_at=now,
+        ))
     return out

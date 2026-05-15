@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from discogs_client.exceptions import HTTPError
 
 from discogs.api.artists import fetch_artist
 from discogs.api.client import DiscogsClient
@@ -60,3 +61,10 @@ def test_fetch_artist_refreshes_when_stale(setup) -> None:
         store.conn.execute("UPDATE artists SET fetched_at = ? WHERE id = ?", (old, 7))
     fetch_artist(client, store, 7)
     assert store.api_calls_today() == initial + 1
+
+
+def test_fetch_artist_returns_none_on_404(setup) -> None:
+    """Discogs occasionally has deleted artists — return None rather than crashing."""
+    _, store, client = setup
+    client.upstream.artist.side_effect = HTTPError("Artist not found.", 404)
+    assert fetch_artist(client, store, 9999) is None

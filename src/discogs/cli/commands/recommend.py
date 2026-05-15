@@ -4,7 +4,7 @@ from __future__ import annotations
 import click
 
 from discogs.api.client import BudgetExceeded, DiscogsClient
-from discogs.api.llm import LLMClient
+from discogs.api.llm import LLMBudgetExceeded, LLMClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
 from discogs.recommend.apply import apply_run
@@ -40,10 +40,12 @@ def _build_llm_client(cfg: Config, store: CacheStore) -> LLMClient:
               help="Push picks to your Discogs wantlist after writing the digest.")
 @click.option("--yes", "skip_confirm", is_flag=True,
               help="Bypass the first-apply confirmation prompt.")
+@click.option("--allow-rerecommend", "allow_rerecommend", is_flag=True,
+              help="Re-include releases recommended in previous runs (collection/wantlist still excluded).")
 def recommend_cmd(
     max_recs: int, budget: int, scope: str,
     no_influences: bool, no_enrich: bool,
-    apply_flag: bool, skip_confirm: bool,
+    apply_flag: bool, skip_confirm: bool, allow_rerecommend: bool,
 ) -> None:
     """Generate top-N recommendations and write a markdown digest."""
     client, store, cfg = _build_pipeline_context()
@@ -65,12 +67,25 @@ def recommend_cmd(
             with_influences = False
             with_enrichment = False
 
-        result = run_recommend(
-            client, store, cfg,
-            llm=llm,
-            max_recs=max_recs, budget=budget, seed_mode=scope,
-            with_influences=with_influences, with_enrichment=with_enrichment,
-        )
+        try:
+            result = run_recommend(
+                client, store, cfg,
+                llm=llm,
+                max_recs=max_recs, budget=budget, seed_mode=scope,
+                with_influences=with_influences, with_enrichment=with_enrichment,
+                allow_rerecommend=allow_rerecommend,
+            )
+        except BudgetExceeded as e:
+            raise click.ClickException(
+                f"Daily Discogs API budget exhausted ({e}). "
+                f"Re-run tomorrow, or raise daily_api_budget in ~/.discogs/config.toml."
+            ) from e
+        except LLMBudgetExceeded as e:
+            raise click.ClickException(
+                f"Daily LLM call budget exhausted ({e}). "
+                f"Re-run tomorrow, or raise daily_llm_budget in ~/.discogs/config.toml. "
+                f"You can also pass --no-influences --no-enrich to skip LLM stages entirely."
+            ) from e
 
         digest_md = render_digest(store, result)
         cfg.digests_dir.mkdir(parents=True, exist_ok=True)
