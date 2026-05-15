@@ -50,6 +50,7 @@ def run_recommend(
     with_influences: bool = True,
     top_k_seeds_for_influences: int = 20,
     with_enrichment: bool = True,
+    allow_rerecommend: bool = False,
 ) -> RunResult:
     """Run the full Phase 2 recommendation pipeline. Dry-run only (no wantlist writes)."""
     weights = weights or DEFAULT_WEIGHTS
@@ -62,6 +63,7 @@ def run_recommend(
         "with_influences": with_influences,
         "top_k_seeds_for_influences": top_k_seeds_for_influences,
         "with_enrichment": with_enrichment,
+        "allow_rerecommend": allow_rerecommend,
     }
     run_id, display_id = store.start_run(args)
 
@@ -92,6 +94,7 @@ def run_recommend(
             max_neighbors_per_seed=max_neighbors_per_seed,
             max_releases_per_neighbor=max_releases_per_neighbor,
             budget=budget,
+            allow_rerecommend=allow_rerecommend,
         )
 
         # After the graph walk, fill in any candidates whose full release detail isn't
