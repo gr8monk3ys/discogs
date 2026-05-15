@@ -116,17 +116,17 @@ def test_recommend_llm_budget_exceeded_clean_error(
         result = CliRunner().invoke(cli, ["recommend"])
 
     assert result.exit_code != 0
-    import click
-    assert isinstance(result.exception, click.ClickException), \
-        f"expected ClickException, got {type(result.exception).__name__}: {result.exception}"
-    assert "llm" in str(result.exception.message).lower()
+    # Click formats ClickException as "Error: <message>" in stderr-merged output;
+    # bare RuntimeError would surface as "Traceback".
+    assert "Error:" in result.output
+    assert "llm" in result.output.lower() or "anthropic" in result.output.lower()
+    assert "Traceback" not in result.output
 
 
 def test_recommend_discogs_budget_exceeded_clean_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """BudgetExceeded mid-pipeline must surface as a clean ClickException."""
-    import click
     monkeypatch.setenv("HOME", str(tmp_path))
     _seed_config(tmp_path)
     from discogs.api.client import BudgetExceeded
@@ -139,6 +139,7 @@ def test_recommend_discogs_budget_exceeded_clean_error(
         result = CliRunner().invoke(cli, ["recommend"])
 
     assert result.exit_code != 0
-    assert isinstance(result.exception, click.ClickException), \
-        f"expected ClickException, got {type(result.exception).__name__}: {result.exception}"
-    assert "budget" in str(result.exception.message).lower()
+    assert "Error:" in result.output
+    # The wrapped message contains "exhausted" — a phrase only present in our ClickException.
+    assert "exhausted" in result.output.lower()
+    assert "Traceback" not in result.output
