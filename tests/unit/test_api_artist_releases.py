@@ -93,6 +93,14 @@ def test_fetch_artist_releases_refreshes_when_stale(setup) -> None:
     assert rids == [99]
 
 
+def test_fetch_artist_releases_returns_empty_on_404(setup) -> None:
+    """Deleted artist → empty discography, not crash."""
+    from discogs_client.exceptions import HTTPError
+    _, store, client = setup
+    client.upstream.artist.side_effect = HTTPError("Artist not found.", 404)
+    assert fetch_artist_releases(client, store, artist_id=9999, top_k=5) == []
+
+
 def test_fetch_artist_releases_persists_artist_record(setup) -> None:
     """Regression: graph walk shouldn't leave artists nameless. fetch_artist_releases
     already calls the artist endpoint, so it should piggyback the artist row."""

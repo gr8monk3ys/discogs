@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from discogs_client.exceptions import HTTPError
+
 from discogs.api.client import DiscogsClient
 from discogs.cache.store import CacheStore
 from discogs.models import Artist
@@ -31,14 +33,20 @@ def _ref_type(ref: Any) -> str:
     return str(getattr(ref, "type", "release"))
 
 
-def fetch_artist(client: DiscogsClient, store: CacheStore, artist_id: int) -> Artist:
+def fetch_artist(client: DiscogsClient, store: CacheStore, artist_id: int) -> Artist | None:
+    """Return Artist; None if Discogs returned 404 (deleted artist or bad id)."""
     age = store.artist_age(artist_id)
     if age is not None and age < ARTIST_TTL:
         cached = store.get_artist(artist_id)
         if cached is not None:
             return cached
 
-    raw = client.call("artist", artist_id)
+    try:
+        raw = client.call("artist", artist_id)
+    except HTTPError as e:
+        if e.status_code == 404:
+            return None
+        raise
     artist = _artist_from_raw(raw)
     store.upsert_artist(artist)
     return artist
@@ -72,7 +80,12 @@ def fetch_artist_releases(
         if cached:
             return cached[:top_k]
 
-    raw = client.call("artist", artist_id)
+    try:
+        raw = client.call("artist", artist_id)
+    except HTTPError as e:
+        if e.status_code == 404:
+            return []
+        raise
     store.upsert_artist(_artist_from_raw(raw))  # piggyback: persist name/profile too
     seen_ids: set[int] = set()
     rids: list[int] = []
