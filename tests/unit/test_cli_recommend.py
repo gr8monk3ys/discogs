@@ -98,3 +98,47 @@ def test_recommend_apply_with_yes_succeeds_on_empty(
         result = CliRunner().invoke(cli, ["recommend", "--apply", "--yes"])
 
     assert result.exit_code == 0, result.output
+
+
+def test_recommend_llm_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LLMBudgetExceeded mid-pipeline must surface as a clean ClickException, not a traceback."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.llm import LLMBudgetExceeded
+
+    fake_store = MagicMock()
+    with patch("discogs.cli.commands.recommend._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.recommend.run_recommend") as rr:
+        rr.side_effect = LLMBudgetExceeded("Daily LLM call budget of 100 exceeded.")
+        result = CliRunner().invoke(cli, ["recommend"])
+
+    assert result.exit_code != 0
+    import click
+    assert isinstance(result.exception, click.ClickException), \
+        f"expected ClickException, got {type(result.exception).__name__}: {result.exception}"
+    assert "llm" in str(result.exception.message).lower()
+
+
+def test_recommend_discogs_budget_exceeded_clean_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BudgetExceeded mid-pipeline must surface as a clean ClickException."""
+    import click
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _seed_config(tmp_path)
+    from discogs.api.client import BudgetExceeded
+
+    fake_store = MagicMock()
+    with patch("discogs.cli.commands.recommend._build_pipeline_context",
+               return_value=(MagicMock(), fake_store, load_config())), \
+         patch("discogs.cli.commands.recommend.run_recommend") as rr:
+        rr.side_effect = BudgetExceeded("Daily Discogs API budget of 1500 exceeded.")
+        result = CliRunner().invoke(cli, ["recommend"])
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, click.ClickException), \
+        f"expected ClickException, got {type(result.exception).__name__}: {result.exception}"
+    assert "budget" in str(result.exception.message).lower()

@@ -4,7 +4,7 @@ from __future__ import annotations
 import click
 
 from discogs.api.client import BudgetExceeded, DiscogsClient
-from discogs.api.llm import LLMClient
+from discogs.api.llm import LLMBudgetExceeded, LLMClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
 from discogs.recommend.apply import apply_run
@@ -65,12 +65,24 @@ def recommend_cmd(
             with_influences = False
             with_enrichment = False
 
-        result = run_recommend(
-            client, store, cfg,
-            llm=llm,
-            max_recs=max_recs, budget=budget, seed_mode=scope,
-            with_influences=with_influences, with_enrichment=with_enrichment,
-        )
+        try:
+            result = run_recommend(
+                client, store, cfg,
+                llm=llm,
+                max_recs=max_recs, budget=budget, seed_mode=scope,
+                with_influences=with_influences, with_enrichment=with_enrichment,
+            )
+        except BudgetExceeded as e:
+            raise click.ClickException(
+                f"Daily Discogs API budget exhausted ({e}). "
+                f"Re-run tomorrow, or raise daily_api_budget in ~/.discogs/config.toml."
+            ) from e
+        except LLMBudgetExceeded as e:
+            raise click.ClickException(
+                f"Daily LLM call budget exhausted ({e}). "
+                f"Re-run tomorrow, or raise daily_llm_budget in ~/.discogs/config.toml. "
+                f"You can also pass --no-influences --no-enrich to skip LLM stages entirely."
+            ) from e
 
         digest_md = render_digest(store, result)
         cfg.digests_dir.mkdir(parents=True, exist_ok=True)
