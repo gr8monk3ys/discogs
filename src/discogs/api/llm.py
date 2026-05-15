@@ -26,7 +26,10 @@ class LLMClient:
     ) -> None:
         self._config = config
         self._store = store
-        self._upstream = upstream_factory(api_key=config.anthropic_api_key or "")
+        self._upstream = upstream_factory(
+            api_key=config.anthropic_api_key or "",
+            timeout=60.0,
+        )
 
     def complete(
         self,
