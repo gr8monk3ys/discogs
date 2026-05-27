@@ -8,8 +8,8 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .venv/
+venv/
+mypy_check/
 dist/
 build/
 ~/.discogs/
-
-uv.lock

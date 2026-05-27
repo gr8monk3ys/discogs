@@ -4,12 +4,15 @@ A Python library + CLI for the Discogs API. Phase 1 ships collection/wantlist sy
 
 ## Install
 
+Requires [uv](https://docs.astral.sh/uv/) (install: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+
 ```bash
 git clone <this-repo>
 cd discogs
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
 ```
+
+`uv sync` creates `.venv/`, installs runtime + dev dependencies from `uv.lock`, and installs the `discogs` CLI in editable mode. Prefix commands with `uv run` (e.g. `uv run discogs status`), or activate the venv with `source .venv/bin/activate`.
 
 ## Quickstart
 
@@ -86,10 +89,12 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 ## Development
 
 ```bash
-pytest                        # unit + integration (cassettes)
-ruff check src/ tests/        # lint
-mypy src/                     # types
+uv run pytest                 # unit + integration (cassettes)
+uv run ruff check src/ tests/ # lint
+uv run mypy src/              # types
 ```
+
+To add a runtime dep: `uv add <pkg>`. To add a dev-only dep: `uv add --group dev <pkg>`. Both update `pyproject.toml` and `uv.lock` atomically.
 
 See `docs/superpowers/specs/` for the full design and `docs/superpowers/plans/` for the implementation plan.
 
