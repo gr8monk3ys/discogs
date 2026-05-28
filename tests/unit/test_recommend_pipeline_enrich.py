@@ -11,7 +11,7 @@ from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.models import Format, Release
 from discogs.recommend.graph import GraphPath
-from discogs.recommend.pipeline import run_recommend
+from discogs.recommend.pipeline import RecommendParams, run_recommend
 from discogs.recommend.scoring import Enrichment, ScoredCandidate
 from discogs.recommend.seeds import SeedArtist
 
@@ -69,7 +69,7 @@ def test_pipeline_invokes_enrich_by_default(setup) -> None:
                return_value={i: _release(i) for i in range(20)}), \
          patch("discogs.recommend.pipeline._load_label_counts",
                return_value={i: 50 for i in range(20)}):
-        run_recommend(client, store, cfg, llm=llm, max_recs=5)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5), llm=llm)
 
     enrich.assert_called_once()
 
@@ -90,7 +90,7 @@ def test_pipeline_skips_enrich_when_disabled(setup) -> None:
                return_value={i: _release(i) for i in range(5)}), \
          patch("discogs.recommend.pipeline._load_label_counts",
                return_value={i: 50 for i in range(5)}):
-        run_recommend(client, store, cfg, llm=llm, max_recs=5, with_enrichment=False)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5, with_enrichment=False), llm=llm)
 
     enrich.assert_not_called()
 
@@ -121,6 +121,6 @@ def test_enrichment_resorts_picks(setup) -> None:
                return_value={1: _release(1), 2: _release(2)}), \
          patch("discogs.recommend.pipeline._load_label_counts",
                return_value={1: 50, 2: 50}):
-        result = run_recommend(client, store, cfg, llm=llm, max_recs=5)
+        result = run_recommend(client, store, cfg, RecommendParams(max_recs=5), llm=llm)
 
     assert result.picks[0].release_id == 2  # boosted above 1

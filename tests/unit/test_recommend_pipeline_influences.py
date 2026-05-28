@@ -10,7 +10,7 @@ from discogs.api.llm import LLMClient
 from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.models import ArtistInfluence
-from discogs.recommend.pipeline import run_recommend
+from discogs.recommend.pipeline import RecommendParams, run_recommend
 from discogs.recommend.seeds import SeedArtist
 
 
@@ -41,7 +41,7 @@ def test_pipeline_invokes_expand_influences_by_default(setup) -> None:
          patch("discogs.recommend.pipeline.score_candidates", return_value=[]), \
          patch("discogs.recommend.pipeline._load_releases", return_value={}), \
          patch("discogs.recommend.pipeline._load_label_counts", return_value={}):
-        run_recommend(client, store, cfg, llm=llm, max_recs=5)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5), llm=llm)
 
     ei.assert_called()
 
@@ -58,7 +58,7 @@ def test_pipeline_skips_influences_when_disabled(setup) -> None:
          patch("discogs.recommend.pipeline.score_candidates", return_value=[]), \
          patch("discogs.recommend.pipeline._load_releases", return_value={}), \
          patch("discogs.recommend.pipeline._load_label_counts", return_value={}):
-        run_recommend(client, store, cfg, llm=llm, max_recs=5, with_influences=False)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5, with_influences=False), llm=llm)
 
     ei.assert_not_called()
 
@@ -87,7 +87,7 @@ def test_pipeline_adds_influence_seeds_with_decayed_weight(setup) -> None:
          patch("discogs.recommend.pipeline.score_candidates", return_value=[]), \
          patch("discogs.recommend.pipeline._load_releases", return_value={}), \
          patch("discogs.recommend.pipeline._load_label_counts", return_value={}):
-        run_recommend(client, store, cfg, llm=llm, max_recs=5)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5), llm=llm)
 
     seeds = captured_seeds[0]
     influence_seeds = [s for s in seeds if s.seed_kind == "influence"]

@@ -68,8 +68,8 @@ def test_recommend_max_recs_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     assert result.exit_code == 0, result.output
     rr.assert_called_once()
-    kwargs = rr.call_args.kwargs
-    assert kwargs["max_recs"] == 5
+    params = rr.call_args.args[3]
+    assert params.max_recs == 5
 
 
 def test_recommend_apply_with_yes_succeeds_on_empty(

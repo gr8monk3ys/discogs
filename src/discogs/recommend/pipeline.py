@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 from discogs.api.client import DiscogsClient
 from discogs.api.llm import LLMClient
@@ -19,6 +19,58 @@ from discogs.recommend.seeds import SeedArtist, select_seeds
 
 _INFLUENCE_DECAY = 0.6
 _CONFIDENCE_FACTOR = {"high": 1.0, "medium": 0.7, "low": 0.4}
+_VALID_SEED_MODES = ("collection", "wantlist", "both")
+
+
+@dataclass(frozen=True)
+class RecommendParams:
+    """User-facing tuning knobs for `run_recommend`.
+
+    Field names match the keys persisted to `runs.args` (JSON) so historical
+    run records remain readable. Dependencies (client/store/config/llm) and
+    scoring weights are passed separately to `run_recommend`.
+    """
+    max_recs: int = 25
+    max_per_artist: int = 3
+    seed_mode: str = "both"
+    min_seed_occurrences: int = 2
+    max_neighbors_per_seed: int = 5
+    max_releases_per_neighbor: int = 25
+    budget: int = 800
+    with_influences: bool = True
+    top_k_seeds_for_influences: int = 20
+    with_enrichment: bool = True
+    allow_rerecommend: bool = False
+
+    def __post_init__(self) -> None:
+        if self.max_recs < 1:
+            raise ValueError(f"max_recs must be >= 1, got {self.max_recs}")
+        if self.max_per_artist < 1:
+            raise ValueError(f"max_per_artist must be >= 1, got {self.max_per_artist}")
+        if self.seed_mode not in _VALID_SEED_MODES:
+            raise ValueError(
+                f"seed_mode must be one of {_VALID_SEED_MODES}, got {self.seed_mode!r}"
+            )
+        if self.min_seed_occurrences < 1:
+            raise ValueError(
+                f"min_seed_occurrences must be >= 1, got {self.min_seed_occurrences}"
+            )
+        if self.max_neighbors_per_seed < 1:
+            raise ValueError(
+                f"max_neighbors_per_seed must be >= 1, got {self.max_neighbors_per_seed}"
+            )
+        if self.max_releases_per_neighbor < 1:
+            raise ValueError(
+                f"max_releases_per_neighbor must be >= 1, got {self.max_releases_per_neighbor}"
+            )
+        # budget=0 is intentionally allowed: cached-data-only runs are supported.
+        if self.budget < 0:
+            raise ValueError(f"budget must be >= 0, got {self.budget}")
+        if self.top_k_seeds_for_influences < 1:
+            raise ValueError(
+                f"top_k_seeds_for_influences must be >= 1, "
+                f"got {self.top_k_seeds_for_influences}"
+            )
 
 
 @dataclass
@@ -37,34 +89,15 @@ def run_recommend(
     client: DiscogsClient,
     store: CacheStore,
     config: Config,
+    params: RecommendParams | None = None,
     *,
-    max_recs: int = 25,
-    max_per_artist: int = 3,
-    seed_mode: str = "both",
-    min_seed_occurrences: int = 2,
-    max_neighbors_per_seed: int = 5,
-    max_releases_per_neighbor: int = 25,
-    budget: int = 800,
     weights: dict[str, float] | None = None,
     llm: LLMClient | None = None,
-    with_influences: bool = True,
-    top_k_seeds_for_influences: int = 20,
-    with_enrichment: bool = True,
-    allow_rerecommend: bool = False,
 ) -> RunResult:
     """Run the full Phase 2 recommendation pipeline. Dry-run only (no wantlist writes)."""
+    params = params or RecommendParams()
     weights = weights or DEFAULT_WEIGHTS
-    args = {
-        "max_recs": max_recs, "max_per_artist": max_per_artist,
-        "seed_mode": seed_mode, "min_seed_occurrences": min_seed_occurrences,
-        "max_neighbors_per_seed": max_neighbors_per_seed,
-        "max_releases_per_neighbor": max_releases_per_neighbor,
-        "budget": budget,
-        "with_influences": with_influences,
-        "top_k_seeds_for_influences": top_k_seeds_for_influences,
-        "with_enrichment": with_enrichment,
-        "allow_rerecommend": allow_rerecommend,
-    }
+    args: dict[str, object] = asdict(params)
     run_id, display_id = store.start_run(args)
 
     started = time.monotonic()
@@ -72,9 +105,13 @@ def run_recommend(
 
     try:
         # Ensure library releases have their credits cached so seed selection has data.
-        _prefetch_library_releases(client, store, scope=seed_mode, daily_budget=config.daily_api_budget)
+        _prefetch_library_releases(
+            client, store, scope=params.seed_mode, daily_budget=config.daily_api_budget,
+        )
 
-        seeds = select_seeds(store, mode=seed_mode, min_occurrences=min_seed_occurrences)  # type: ignore[arg-type]
+        seeds = select_seeds(
+            store, mode=params.seed_mode, min_occurrences=params.min_seed_occurrences,  # type: ignore[arg-type]
+        )
         if not seeds:
             store.finish_run(run_id, summary={"seeds": 0, "candidates": 0, "selected": 0})
             return RunResult(
@@ -84,24 +121,24 @@ def run_recommend(
                 args=args,
             )
 
-        if with_influences and llm is not None and seeds:
+        if params.with_influences and llm is not None and seeds:
             seeds = _expand_seed_pool_with_influences(
-                client, store, llm, seeds, top_k=top_k_seeds_for_influences,
+                client, store, llm, seeds, top_k=params.top_k_seeds_for_influences,
             )
 
         candidate_paths = walk_credit_graph(
             client, store, seeds,
-            max_neighbors_per_seed=max_neighbors_per_seed,
-            max_releases_per_neighbor=max_releases_per_neighbor,
-            budget=budget,
-            allow_rerecommend=allow_rerecommend,
+            max_neighbors_per_seed=params.max_neighbors_per_seed,
+            max_releases_per_neighbor=params.max_releases_per_neighbor,
+            budget=params.budget,
+            allow_rerecommend=params.allow_rerecommend,
         )
 
         # After the graph walk, fill in any candidates whose full release detail isn't
         # cached yet. Cap to whatever's left of the user's --budget for this run so the
         # total spend honors their request (the graph walk shares the same pool).
         spent_so_far = store.api_calls_today() - api_calls_at_start
-        release_load_budget = max(0, budget - spent_so_far)
+        release_load_budget = max(0, params.budget - spent_so_far)
         releases = _load_releases(client, store, list(candidate_paths.keys()), budget_left=release_load_budget)
         label_counts = _load_label_counts(store, list(candidate_paths.keys()))
 
@@ -110,14 +147,14 @@ def run_recommend(
             releases=releases, label_release_counts=label_counts, weights=weights,
         )
 
-        if with_enrichment and llm is not None and scored:
-            head = scored[: max_recs * 2]
-            tail = scored[max_recs * 2 :]
+        if params.with_enrichment and llm is not None and scored:
+            head = scored[: params.max_recs * 2]
+            tail = scored[params.max_recs * 2 :]
             enriched_head = enrich_candidates(llm, head, releases)
             enriched_head.sort(key=lambda s: -s.score)
             scored = enriched_head + tail
 
-        picks = _apply_diversity(scored, max_recs=max_recs, max_per_artist=max_per_artist)
+        picks = _apply_diversity(scored, max_recs=params.max_recs, max_per_artist=params.max_per_artist)
 
         for p in picks:
             store.record_recommendation(run_id=run_id, release_id=p.release_id, score=p.score)
