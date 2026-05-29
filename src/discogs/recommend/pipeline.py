@@ -157,7 +157,10 @@ def run_recommend(
         picks = _apply_diversity(scored, max_recs=params.max_recs, max_per_artist=params.max_per_artist)
 
         for p in picks:
-            store.record_recommendation(run_id=run_id, release_id=p.release_id, score=p.score)
+            store.record_recommendation(
+                run_id=run_id, release_id=p.release_id, score=p.score,
+                subscores=p.subscores,
+            )
 
         api_calls_used = store.api_calls_today() - api_calls_at_start
         store.finish_run(run_id, summary={

@@ -21,20 +21,51 @@ if TYPE_CHECKING:
     )
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
-CURRENT_SCHEMA_VERSION = 1
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+CURRENT_SCHEMA_VERSION = 2
 
 
 def init_db(path: Path) -> None:
-    """Create the cache database and apply the schema. Idempotent."""
+    """Create or upgrade the cache database. Idempotent.
+
+    Fresh databases get the current schema directly from schema.sql and are
+    stamped at CURRENT_SCHEMA_VERSION. Existing databases are upgraded by
+    applying migrations/v{N}.sql for each version between their stored version
+    and CURRENT_SCHEMA_VERSION — so a column added to an existing table reaches
+    DBs that predate it (schema.sql's CREATE ... IF NOT EXISTS can't).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    schema_sql = SCHEMA_FILE.read_text()
     with sqlite3.connect(path) as conn:
-        conn.executescript(schema_sql)
-        conn.execute(
-            "INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (?, ?)",
-            (CURRENT_SCHEMA_VERSION, datetime.now(UTC).isoformat()),
-        )
+        existing = _stored_version(conn)
+        conn.executescript(SCHEMA_FILE.read_text())
+        if existing == 0:
+            _stamp_version(conn, CURRENT_SCHEMA_VERSION)
+        else:
+            _apply_migrations(conn, from_version=existing)
         conn.commit()
+
+
+def _stored_version(conn: sqlite3.Connection) -> int:
+    """Highest applied schema version, or 0 for a brand-new database."""
+    try:
+        row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+    except sqlite3.OperationalError:
+        return 0  # schema_version table doesn't exist yet
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+def _stamp_version(conn: sqlite3.Connection, version: int) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_version(version, applied_at) VALUES (?, ?)",
+        (version, datetime.now(UTC).isoformat()),
+    )
+
+
+def _apply_migrations(conn: sqlite3.Connection, *, from_version: int) -> None:
+    for version in range(from_version + 1, CURRENT_SCHEMA_VERSION + 1):
+        migration = MIGRATIONS_DIR / f"v{version}.sql"
+        conn.executescript(migration.read_text())
+        _stamp_version(conn, version)
 
 
 class CacheStore:
@@ -376,12 +407,15 @@ class CacheStore:
             )
 
     def record_recommendation(
-        self, run_id: str, release_id: int, score: float
+        self, run_id: str, release_id: int, score: float,
+        subscores: dict[str, float] | None = None,
     ) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT INTO recommendation_history (release_id, run_id, score) VALUES (?, ?, ?)",
-                (release_id, run_id, score),
+                "INSERT INTO recommendation_history "
+                "(release_id, run_id, score, subscores_json) VALUES (?, ?, ?, ?)",
+                (release_id, run_id, score,
+                 json.dumps(subscores) if subscores is not None else None),
             )
 
     def previously_recommended_release_ids(self) -> set[int]:
@@ -548,3 +582,83 @@ class CacheStore:
             "WHERE applied_at IS NOT NULL LIMIT 1"
         ).fetchone()
         return row is not None
+
+    # ------------------------------------------------------------------
+    # Phase 6 — explain / diff / stats
+    # ------------------------------------------------------------------
+
+    def get_recommendations_for_release(self, release_id: int) -> list[sqlite3.Row]:
+        """Every run that recommended this release, newest run first.
+
+        Columns: run_id, display_id, started_at, score, subscores_json,
+        applied_to_wantlist.
+        """
+        return self.conn.execute(
+            "SELECT h.run_id, r.display_id, r.started_at, h.score, "
+            "h.subscores_json, h.applied_to_wantlist "
+            "FROM recommendation_history h JOIN runs r ON r.id = h.run_id "
+            "WHERE h.release_id = ? ORDER BY r.started_at DESC",
+            (release_id,),
+        ).fetchall()
+
+    def _library_subquery(self, scope: str) -> str:
+        """SQL that selects the library's release_ids for the given scope.
+
+        Returned text is a fixed string keyed only on `scope` (no user input),
+        safe to interpolate into the surrounding aggregate queries.
+        """
+        if scope == "collection":
+            return "SELECT release_id FROM collection_items"
+        if scope == "wantlist":
+            return "SELECT release_id FROM wantlist_items"
+        return (
+            "SELECT release_id FROM collection_items "
+            "UNION SELECT release_id FROM wantlist_items"
+        )
+
+    def library_size(self, scope: str = "both") -> int:
+        """Distinct release_ids in the library (whether or not detail is cached)."""
+        sub = self._library_subquery(scope)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM ({sub})"
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def cached_release_count(self, scope: str = "both") -> int:
+        """Library releases that have full detail cached in `releases`."""
+        sub = self._library_subquery(scope)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) AS n FROM releases WHERE id IN ({sub})"
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def decade_distribution(self, scope: str = "both") -> list[tuple[int, int]]:
+        """(decade, count) over cached library releases, oldest first. Year 0 skipped."""
+        sub = self._library_subquery(scope)
+        rows = self.conn.execute(
+            f"SELECT (year / 10) * 10 AS decade, COUNT(*) AS n FROM releases "
+            f"WHERE id IN ({sub}) AND year > 0 "
+            f"GROUP BY decade ORDER BY decade ASC"
+        ).fetchall()
+        return [(int(r["decade"]), int(r["n"])) for r in rows]
+
+    def top_styles(self, scope: str = "both", limit: int = 10) -> list[tuple[str, int]]:
+        sub = self._library_subquery(scope)
+        rows = self.conn.execute(
+            f"SELECT style, COUNT(*) AS n FROM release_styles "
+            f"WHERE release_id IN ({sub}) "
+            f"GROUP BY style ORDER BY n DESC, style ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [(str(r["style"]), int(r["n"])) for r in rows]
+
+    def top_labels(self, scope: str = "both", limit: int = 10) -> list[tuple[str, int]]:
+        sub = self._library_subquery(scope)
+        rows = self.conn.execute(
+            f"SELECT l.name AS name, COUNT(*) AS n FROM release_labels rl "
+            f"JOIN labels l ON l.id = rl.label_id "
+            f"WHERE rl.release_id IN ({sub}) "
+            f"GROUP BY l.id ORDER BY n DESC, name ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [(str(r["name"]), int(r["n"])) for r in rows]

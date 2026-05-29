@@ -85,6 +85,9 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs apply <run-display-id> [--yes]` | Apply a previously-generated run's picks to your wantlist. |
 | `discogs undo-last-batch [--yes]` | Remove the most recently applied batch from your wantlist. |
 | `discogs undo <run-display-id> [--yes]` | Remove a specific run's applied picks from your wantlist. |
+| `discogs explain <release-id>` | Show the sub-score breakdown for a recommended release, plus which runs surfaced it. |
+| `discogs diff <run-A> <run-B>` | Compare two runs' picks: added, dropped, and rescored releases (by display id). |
+| `discogs stats [--scope ...] [--top 10]` | Era / style / label distribution of your library (reads the cache, no API calls). |
 
 ## Development
 
