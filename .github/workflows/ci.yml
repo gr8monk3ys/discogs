@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint + types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Mirrors the locally-enforced gates exactly. `ruff format` is intentionally
+      # not run: this project adopted `ruff check` (lint) but not the formatter.
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Mypy (strict)
+        run: uv run mypy src
+
+  test:
+    name: tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Coverage floor is set just below the current ~93% so an ordinary refactor
+      # doesn't redden CI. Ratchet it upward as coverage grows.
+      - name: Pytest + coverage gate
+        run: >-
+          uv run pytest
+          --cov=discogs
+          --cov-report=term-missing
+          --cov-fail-under=90
