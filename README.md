@@ -1,15 +1,20 @@
 # discogs
 
+[![CI](https://github.com/gr8monk3ys/discogs/actions/workflows/ci.yml/badge.svg)](https://github.com/gr8monk3ys/discogs/actions/workflows/ci.yml)
+
 A Python library + CLI for the Discogs API. Phase 1 ships collection/wantlist sync into a local cache. Recommendation features (Phase 2+) follow.
 
 ## Install
 
+Requires [uv](https://docs.astral.sh/uv/) (install: `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+
 ```bash
 git clone <this-repo>
 cd discogs
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
 ```
+
+`uv sync` creates `.venv/`, installs runtime + dev dependencies from `uv.lock`, and installs the `discogs` CLI in editable mode. Prefix commands with `uv run` (e.g. `uv run discogs status`), or activate the venv with `source .venv/bin/activate`.
 
 ## Quickstart
 
@@ -82,14 +87,19 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs apply <run-display-id> [--yes]` | Apply a previously-generated run's picks to your wantlist. |
 | `discogs undo-last-batch [--yes]` | Remove the most recently applied batch from your wantlist. |
 | `discogs undo <run-display-id> [--yes]` | Remove a specific run's applied picks from your wantlist. |
+| `discogs explain <release-id>` | Show the sub-score breakdown for a recommended release, plus which runs surfaced it. |
+| `discogs diff <run-A> <run-B>` | Compare two runs' picks: added, dropped, and rescored releases (by display id). |
+| `discogs stats [--scope ...] [--top 10]` | Era / style / label distribution of your library (reads the cache, no API calls). |
 
 ## Development
 
 ```bash
-pytest                        # unit + integration (cassettes)
-ruff check src/ tests/        # lint
-mypy src/                     # types
+uv run pytest                 # unit + integration (cassettes)
+uv run ruff check src/ tests/ # lint
+uv run mypy src/              # types
 ```
+
+To add a runtime dep: `uv add <pkg>`. To add a dev-only dep: `uv add --group dev <pkg>`. Both update `pyproject.toml` and `uv.lock` atomically.
 
 See `docs/superpowers/specs/` for the full design and `docs/superpowers/plans/` for the implementation plan.
 

@@ -1,4 +1,4 @@
--- Schema version 1
+-- Schema version 2
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL
@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS recommendation_history (
     release_id INTEGER NOT NULL,
     run_id TEXT NOT NULL,
     score REAL NOT NULL,
+    subscores_json TEXT,
     applied_to_wantlist INTEGER NOT NULL DEFAULT 0,
     applied_at TEXT,
     removed_at TEXT,

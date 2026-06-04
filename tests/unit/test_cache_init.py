@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from discogs.cache.store import CacheStore, init_db
+from discogs.cache.store import CURRENT_SCHEMA_VERSION, CacheStore, init_db
 
 
 def test_init_db_creates_all_tables(tmp_path: Path) -> None:
@@ -36,5 +36,5 @@ def test_cache_store_opens_initialized_db(tmp_path: Path) -> None:
     db_path = tmp_path / "cache.db"
     init_db(db_path)
     store = CacheStore(db_path)
-    assert store.schema_version == 1
+    assert store.schema_version == CURRENT_SCHEMA_VERSION
     store.close()

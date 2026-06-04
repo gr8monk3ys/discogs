@@ -10,7 +10,7 @@ from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config
 from discogs.models import CollectionItem, Format, Release
 from discogs.recommend.graph import GraphPath
-from discogs.recommend.pipeline import RunResult, run_recommend
+from discogs.recommend.pipeline import RecommendParams, RunResult, run_recommend
 from discogs.recommend.scoring import ScoredCandidate
 from discogs.recommend.seeds import SeedArtist
 
@@ -63,7 +63,7 @@ def test_pipeline_writes_history_rows(setup) -> None:
              patch("discogs.recommend.pipeline._load_label_counts") as ll:
             lr.return_value = {10: _release(10)}
             ll.return_value = {10: 50}
-            result = run_recommend(client, store, cfg, max_recs=5)
+            result = run_recommend(client, store, cfg, RecommendParams(max_recs=5))
 
     assert isinstance(result, RunResult)
     assert result.picks[0].release_id == 10
@@ -91,7 +91,7 @@ def test_diversity_guard_caps_per_seed_to_three(setup) -> None:
         lr.return_value = {p.release_id: _release(p.release_id) for p in five_picks + [one_other]}
         ll.return_value = {p.release_id: 50 for p in five_picks + [one_other]}
 
-        result = run_recommend(client, store, cfg, max_recs=10)
+        result = run_recommend(client, store, cfg, RecommendParams(max_recs=10))
 
     primary_count = sum(1 for p in result.picks if p.paths[0].seed_artist_id == 42)
     assert primary_count == 3   # diversity cap
@@ -113,7 +113,7 @@ def test_max_recs_limits_picks(setup) -> None:
         lr.return_value = {c.release_id: _release(c.release_id) for c in candidates}
         ll.return_value = {c.release_id: 50 for c in candidates}
 
-        result = run_recommend(client, store, cfg, max_recs=10)
+        result = run_recommend(client, store, cfg, RecommendParams(max_recs=10))
 
     assert len(result.picks) == 10
 
@@ -149,7 +149,7 @@ def test_budget_arg_caps_release_load_phase(setup) -> None:
          patch("discogs.recommend.pipeline._load_releases", side_effect=fake_load), \
          patch("discogs.recommend.pipeline._load_label_counts", return_value={}):
         ss.return_value = [SeedArtist(artist_id=1, weight=1.0, sources=("collection",))]
-        run_recommend(client, store, cfg, max_recs=5, budget=20)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5, budget=20))
 
     # budget=20, 7 consumed by graph walk → 13 left for the load phase.
     assert captured["budget_left"] == 13
@@ -158,7 +158,7 @@ def test_budget_arg_caps_release_load_phase(setup) -> None:
 def test_no_picks_when_no_seeds(setup) -> None:
     cfg, store, client = setup
     with patch("discogs.recommend.pipeline.select_seeds", return_value=[]):
-        result = run_recommend(client, store, cfg, max_recs=10)
+        result = run_recommend(client, store, cfg, RecommendParams(max_recs=10))
     assert result.picks == []
     assert result.candidate_count == 0
 
@@ -175,6 +175,6 @@ def test_pipeline_prefetches_library_releases(setup) -> None:
          patch("discogs.recommend.pipeline.select_seeds", return_value=[]):
         # Make fetch_release a no-op (in real use it would populate credits)
         fr.return_value = None
-        run_recommend(client, store, cfg, max_recs=5)
+        run_recommend(client, store, cfg, RecommendParams(max_recs=5))
 
     fr.assert_called()  # was called at least once during prefetch

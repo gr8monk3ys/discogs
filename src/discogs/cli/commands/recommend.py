@@ -9,7 +9,7 @@ from discogs.cache.store import CacheStore, init_db
 from discogs.config import Config, load_config
 from discogs.recommend.apply import apply_run
 from discogs.recommend.digest import render_digest
-from discogs.recommend.pipeline import run_recommend
+from discogs.recommend.pipeline import RecommendParams, run_recommend
 
 
 def _build_pipeline_context() -> tuple[DiscogsClient, CacheStore, Config]:
@@ -67,14 +67,16 @@ def recommend_cmd(
             with_influences = False
             with_enrichment = False
 
+        params = RecommendParams(
+            max_recs=max_recs,
+            budget=budget,
+            seed_mode=scope,
+            with_influences=with_influences,
+            with_enrichment=with_enrichment,
+            allow_rerecommend=allow_rerecommend,
+        )
         try:
-            result = run_recommend(
-                client, store, cfg,
-                llm=llm,
-                max_recs=max_recs, budget=budget, seed_mode=scope,
-                with_influences=with_influences, with_enrichment=with_enrichment,
-                allow_rerecommend=allow_rerecommend,
-            )
+            result = run_recommend(client, store, cfg, params, llm=llm)
         except BudgetExceeded as e:
             raise click.ClickException(
                 f"Daily Discogs API budget exhausted ({e}). "

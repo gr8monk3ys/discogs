@@ -41,9 +41,10 @@ def test_recommend_passes_llm_when_configured(tmp_path: Path,
         result = CliRunner().invoke(cli, ["recommend"])
 
     assert result.exit_code == 0, result.output
+    params = rr.call_args.args[3]
     assert rr.call_args.kwargs.get("llm") is build_llm.return_value
-    assert rr.call_args.kwargs.get("with_influences") is True
-    assert rr.call_args.kwargs.get("with_enrichment") is True
+    assert params.with_influences is True
+    assert params.with_enrichment is True
 
 
 def test_recommend_no_influences_flag(tmp_path: Path,
@@ -60,7 +61,7 @@ def test_recommend_no_influences_flag(tmp_path: Path,
          patch("discogs.cli.commands.recommend.render_digest", return_value=""):
         CliRunner().invoke(cli, ["recommend", "--no-influences"])
 
-    assert rr.call_args.kwargs["with_influences"] is False
+    assert rr.call_args.args[3].with_influences is False
 
 
 def test_recommend_no_enrich_flag(tmp_path: Path,
@@ -77,7 +78,7 @@ def test_recommend_no_enrich_flag(tmp_path: Path,
          patch("discogs.cli.commands.recommend.render_digest", return_value=""):
         CliRunner().invoke(cli, ["recommend", "--no-enrich"])
 
-    assert rr.call_args.kwargs["with_enrichment"] is False
+    assert rr.call_args.args[3].with_enrichment is False
 
 
 def test_recommend_warns_and_disables_llm_when_no_api_key(tmp_path: Path,
@@ -93,6 +94,7 @@ def test_recommend_warns_and_disables_llm_when_no_api_key(tmp_path: Path,
         result = CliRunner().invoke(cli, ["recommend"])
 
     assert "anthropic" in result.output.lower() or "llm disabled" in result.output.lower()
+    params = rr.call_args.args[3]
     assert rr.call_args.kwargs.get("llm") is None
-    assert rr.call_args.kwargs["with_influences"] is False
-    assert rr.call_args.kwargs["with_enrichment"] is False
+    assert params.with_influences is False
+    assert params.with_enrichment is False
