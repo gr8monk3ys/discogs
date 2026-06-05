@@ -1,9 +1,12 @@
 """Stage 5: orchestrate seeds → graph → scoring → final selection → history."""
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
+
+from discogs_client.exceptions import HTTPError
 
 from discogs.api.client import DiscogsClient
 from discogs.api.llm import LLMClient
@@ -211,7 +214,13 @@ def _load_releases(
             continue
         if budget_left <= 0:
             continue
-        out[rid] = fetch_release(client, store, rid)
+        # A single bad release (404, malformed payload, transient error) shouldn't
+        # abort the whole run — skip it, like the graph walk does. BudgetExceeded
+        # is a RuntimeError and is intentionally NOT caught here, so it propagates.
+        try:
+            out[rid] = fetch_release(client, store, rid)
+        except (HTTPError, json.JSONDecodeError, ValueError, OSError):
+            continue
         budget_left -= 1
     return out
 
@@ -240,7 +249,12 @@ def _prefetch_library_releases(
         # force_credits=True ensures a fresh API call if the release is cached
         # but has no credits (e.g. stored before credit-fetching was implemented).
         # Once credits exist, subsequent calls return from cache at no cost.
-        fetch_release(client, store, release_id, force_credits=True)
+        # A failed fetch for one release shouldn't abort the whole run — skip it,
+        # consistent with the graph walk. BudgetExceeded still propagates.
+        try:
+            fetch_release(client, store, release_id, force_credits=True)
+        except (HTTPError, json.JSONDecodeError, ValueError, OSError):
+            continue
         fetches += 1
     return fetches
 
