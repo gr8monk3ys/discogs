@@ -90,6 +90,28 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs explain <release-id>` | Show the sub-score breakdown for a recommended release, plus which runs surfaced it. |
 | `discogs diff <run-A> <run-B>` | Compare two runs' picks: added, dropped, and rescored releases (by display id). |
 | `discogs stats [--scope ...] [--top 10]` | Era / style / label distribution of your library (reads the cache, no API calls). |
+| `discogs eval [--holdout 18] [--k 50] [--seed 42] [--offline]` | Measure recommendation quality: hide part of your wantlist, recommend over the rest, report recall@k + MRR. |
+
+## Evaluating recommendation quality
+
+The recommender's scoring is a weighted blend of nine sub-scores. To check whether
+those weights actually surface things you want, `discogs eval` uses your **wantlist
+as ground truth**: it hides a random sample of it, recommends over everything else,
+and measures how many hidden items resurface.
+
+```bash
+discogs eval                 # online: fills cache gaps as needed (bounded by --budget)
+discogs eval --offline       # cache-only, zero network; reachability limited to cached graph
+```
+
+It reports `recall@k` (hidden items in the top-k), `MRR` (how near the top), and
+`reachable` (hidden items that appeared anywhere — recall can't exceed this, so a low
+`reachable` is a graph-coverage problem, not a scoring one). The eval runs against a
+temp copy of the cache; your real `~/.discogs/cache.db` is never modified. To tune the
+scoring weights, treat `recall@k` as the fitness function and A/B different weight
+vectors against the same `--seed`. The metric itself lives in
+`compute_recall_metrics` (`src/discogs/eval/heldout.py`) — change it there if you
+define "good" differently (e.g. nDCG, or recency-weighted recall).
 
 ## Development
 
