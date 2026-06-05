@@ -1,0 +1,155 @@
+## Synthetic, hand-authored cassette (NOT recorded from the live API).
+##
+## It exercises the full sync path through python3-discogs-client using fake data:
+## no real release IDs, no usernames, no token, no PII. The client follows the
+## hypermedia URLs embedded in each response body, so the five interactions below
+## are walked in order:
+##   1. GET /oauth/identity            -> username + collection_folders_url
+##   2. GET .../collection/folders     -> folder 0 ("All") with its resource_url
+##   3. GET .../folders/0/releases     -> 2 synthetic collection items (page 1 of 1)
+##   4. GET /users/test-user           -> wantlist_url (refresh of the user() partial)
+##   5. GET .../wants                  -> 2 synthetic wantlist items (page 1 of 1)
+##
+## The `token` query param and `Authorization` header are filtered by the VCR
+## config in test_sync_integration.py, so they never appear here and aren't matched.
+interactions:
+- request:
+    method: GET
+    uri: https://api.discogs.com/oauth/identity
+    body: null
+    headers: {}
+  response:
+    status: {code: 200, message: OK}
+    headers:
+      Content-Type: [application/json]
+    body:
+      string: |
+        {
+          "id": 1,
+          "username": "test-user",
+          "resource_url": "https://api.discogs.com/users/test-user",
+          "consumer_name": "synthetic-test",
+          "collection_folders_url": "https://api.discogs.com/users/test-user/collection/folders"
+        }
+- request:
+    method: GET
+    uri: https://api.discogs.com/users/test-user/collection/folders
+    body: null
+    headers: {}
+  response:
+    status: {code: 200, message: OK}
+    headers:
+      Content-Type: [application/json]
+    body:
+      string: |
+        {
+          "folders": [
+            {
+              "id": 0,
+              "name": "All",
+              "count": 2,
+              "resource_url": "https://api.discogs.com/users/test-user/collection/folders/0"
+            }
+          ]
+        }
+- request:
+    method: GET
+    uri: https://api.discogs.com/users/test-user/collection/folders/0/releases?page=1&per_page=50
+    body: null
+    headers: {}
+  response:
+    status: {code: 200, message: OK}
+    headers:
+      Content-Type: [application/json]
+    body:
+      string: |
+        {
+          "pagination": {"page": 1, "pages": 1, "per_page": 50, "items": 2, "urls": {}},
+          "releases": [
+            {
+              "id": 1001,
+              "instance_id": 5001,
+              "folder_id": 0,
+              "rating": 0,
+              "date_added": "2021-01-01T00:00:00-08:00",
+              "basic_information": {
+                "id": 1001,
+                "title": "Synthetic Album One",
+                "year": 1979,
+                "artists": [{"id": 2001, "name": "Test Artist A"}]
+              }
+            },
+            {
+              "id": 1002,
+              "instance_id": 5002,
+              "folder_id": 0,
+              "rating": 0,
+              "date_added": "2021-02-01T00:00:00-08:00",
+              "basic_information": {
+                "id": 1002,
+                "title": "Synthetic Album Two",
+                "year": 1983,
+                "artists": [{"id": 2002, "name": "Test Artist B"}]
+              }
+            }
+          ]
+        }
+- request:
+    method: GET
+    uri: https://api.discogs.com/users/test-user
+    body: null
+    headers: {}
+  response:
+    status: {code: 200, message: OK}
+    headers:
+      Content-Type: [application/json]
+    body:
+      string: |
+        {
+          "id": 1,
+          "username": "test-user",
+          "resource_url": "https://api.discogs.com/users/test-user",
+          "wantlist_url": "https://api.discogs.com/users/test-user/wants",
+          "num_collection": 2,
+          "num_wantlist": 2
+        }
+- request:
+    method: GET
+    uri: https://api.discogs.com/users/test-user/wants?page=1&per_page=50
+    body: null
+    headers: {}
+  response:
+    status: {code: 200, message: OK}
+    headers:
+      Content-Type: [application/json]
+    body:
+      string: |
+        {
+          "pagination": {"page": 1, "pages": 1, "per_page": 50, "items": 2, "urls": {}},
+          "wants": [
+            {
+              "id": 3001,
+              "rating": 0,
+              "notes": "synthetic note",
+              "date_added": "2022-03-01T00:00:00-08:00",
+              "basic_information": {
+                "id": 4001,
+                "title": "Wanted Record One",
+                "year": 1991,
+                "artists": [{"id": 2003, "name": "Test Artist C"}]
+              }
+            },
+            {
+              "id": 3002,
+              "rating": 0,
+              "date_added": "2022-04-01T00:00:00-08:00",
+              "basic_information": {
+                "id": 4002,
+                "title": "Wanted Record Two",
+                "year": 2004,
+                "artists": [{"id": 2004, "name": "Test Artist D"}]
+              }
+            }
+          ]
+        }
+version: 1
