@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from discogs.cache.store import CacheStore, init_db
-from discogs.models import Format, Release
+from discogs.models import CollectionItem, Format, Release
 from discogs.recommend.graph import GraphPath
 from discogs.recommend.scoring import (
     DEFAULT_WEIGHTS,
@@ -119,6 +119,73 @@ def test_influence_chain_score_is_zero_in_phase_2(store: CacheStore) -> None:
         label_release_counts={1: 50}, weights=DEFAULT_WEIGHTS,
     )
     assert scored[0].subscores["influence_chain"] == 0.0
+
+
+def _seed_collection(store: CacheStore, releases: list[Release]) -> None:
+    """Persist `releases` and mark every one as owned, so the style/decade
+    distributions the scorer derives from the collection are populated."""
+    now = datetime.now(UTC)
+    for rel in releases:
+        store.upsert_release(rel)
+    store.replace_collection([
+        CollectionItem(release_id=rel.id, folder_id=0, instance_id=rel.id, date_added=now)
+        for rel in releases
+    ])
+
+
+def test_style_niche_rewards_unfamiliar_styles(store: CacheStore) -> None:
+    """A candidate in a style the user barely owns should out-score one in a
+    style that saturates their collection (style_niche = 1 - user_frequency)."""
+    # Collection is entirely "Bebop": that style is maximally familiar (freq 1.0),
+    # so a Bebop candidate is non-niche and a "Drone" candidate is fully niche.
+    _seed_collection(store, [_release(900 + i, styles=["Bebop"]) for i in range(4)])
+
+    paths = {
+        1: [GraphPath(1, 0.9, ((1, 1, "direct"),), 1.0)],
+        2: [GraphPath(1, 0.9, ((1, 2, "direct"),), 1.0)],
+    }
+    releases = {
+        1: _release(1, styles=["Drone"]),   # unseen in collection -> niche
+        2: _release(2, styles=["Bebop"]),   # saturates collection -> not niche
+    }
+    scored = {s.release_id: s for s in score_candidates(
+        store=store, candidate_paths=paths, releases=releases,
+        label_release_counts={1: 50, 2: 50}, weights=DEFAULT_WEIGHTS,
+    )}
+    assert scored[1].subscores["style_niche"] == pytest.approx(1.0)
+    assert scored[2].subscores["style_niche"] == pytest.approx(0.0)
+    assert scored[1].subscores["style_niche"] > scored[2].subscores["style_niche"]
+
+
+def test_recency_match_favors_user_dominant_decade(store: CacheStore) -> None:
+    """recency_match scores a candidate by how much of the user's collection sits
+    in its decade; with no collection it falls back to a neutral 0.5."""
+    # Neutral fallback when the collection has no usable years.
+    neutral = score_candidates(
+        store=store,
+        candidate_paths={1: [GraphPath(1, 0.9, ((1, 1, "direct"),), 1.0)]},
+        releases={1: _release(1, year=1975)},
+        label_release_counts={1: 50}, weights=DEFAULT_WEIGHTS,
+    )[0]
+    assert neutral.subscores["recency_match"] == pytest.approx(0.5)
+
+    # Collection: 3 of the 1970s, 1 of the 1990s -> the 70s candidate should win.
+    _seed_collection(store, [
+        _release(801, year=1971), _release(802, year=1975),
+        _release(803, year=1978), _release(804, year=1991),
+    ])
+    paths = {
+        1: [GraphPath(1, 0.9, ((1, 1, "direct"),), 1.0)],
+        2: [GraphPath(1, 0.9, ((1, 2, "direct"),), 1.0)],
+    }
+    releases = {1: _release(1, year=1976), 2: _release(2, year=1995)}
+    scored = {s.release_id: s for s in score_candidates(
+        store=store, candidate_paths=paths, releases=releases,
+        label_release_counts={1: 50, 2: 50}, weights=DEFAULT_WEIGHTS,
+    )}
+    assert scored[1].subscores["recency_match"] == pytest.approx(0.75)  # 3/4 in the 70s
+    assert scored[2].subscores["recency_match"] == pytest.approx(0.25)  # 1/4 in the 90s
+    assert scored[1].subscores["recency_match"] > scored[2].subscores["recency_match"]
 
 
 def test_results_sorted_descending(store: CacheStore) -> None:
