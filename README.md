@@ -1,5 +1,9 @@
 # discogs
 
+<p align="center">
+  <img src="docs/assets/hero.png" alt="discogs preview" width="640">
+</p>
+
 [![CI](https://github.com/gr8monk3ys/discogs/actions/workflows/ci.yml/badge.svg)](https://github.com/gr8monk3ys/discogs/actions/workflows/ci.yml)
 
 A Python library + CLI for the Discogs API. Phase 1 ships collection/wantlist sync into a local cache. Recommendation features (Phase 2+) follow.
