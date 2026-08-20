@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 def init_db(path: Path) -> None:
@@ -662,3 +662,82 @@ class CacheStore:
             (limit,),
         ).fetchall()
         return [(str(r["name"]), int(r["n"])) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Spotify interchange
+    # ------------------------------------------------------------------
+
+    def upsert_spotify_artist(
+        self,
+        *,
+        spotify_artist_id: str,
+        name: str,
+        liked_track_count: int,
+        discogs_artist_id: int | None,
+        match_method: str,
+        resolved_at: str,
+    ) -> None:
+        """Record one Spotify artist and how it resolved.
+
+        `liked_track_count` is refreshed on every import because the
+        library grows, but the resolution is only overwritten when this
+        run actually produced one — a re-import that skipped an
+        already-resolved artist must not blank it back to unresolved.
+        """
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO spotify_artists (
+                    spotify_artist_id, name, discogs_artist_id,
+                    liked_track_count, match_method, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(spotify_artist_id) DO UPDATE SET
+                    name = excluded.name,
+                    liked_track_count = excluded.liked_track_count,
+                    discogs_artist_id = COALESCE(
+                        excluded.discogs_artist_id, spotify_artists.discogs_artist_id
+                    ),
+                    match_method = excluded.match_method,
+                    resolved_at = excluded.resolved_at
+                """,
+                (
+                    spotify_artist_id,
+                    name,
+                    discogs_artist_id,
+                    liked_track_count,
+                    match_method,
+                    resolved_at,
+                ),
+            )
+
+    def spotify_artist_resolutions(self) -> dict[str, int | None]:
+        """Every imported Spotify artist id mapped to its Discogs id."""
+        return {
+            str(r["spotify_artist_id"]): (
+                int(r["discogs_artist_id"]) if r["discogs_artist_id"] is not None else None
+            )
+            for r in self.conn.execute(
+                "SELECT spotify_artist_id, discogs_artist_id FROM spotify_artists"
+            )
+        }
+
+    def spotify_seed_weights(self) -> dict[int, int]:
+        """Discogs artist id → liked-track count, resolved artists only.
+
+        Summed, because two Spotify artist ids can resolve to one Discogs
+        artist — the same act credited separately on different releases.
+        """
+        rows = self.conn.execute(
+            "SELECT discogs_artist_id AS aid, SUM(liked_track_count) AS n "
+            "FROM spotify_artists WHERE discogs_artist_id IS NOT NULL "
+            "GROUP BY discogs_artist_id"
+        ).fetchall()
+        return {int(r["aid"]): int(r["n"]) for r in rows}
+
+    def spotify_import_counts(self) -> tuple[int, int]:
+        """(total imported, resolved to a Discogs artist)."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS total, "
+            "COUNT(discogs_artist_id) AS resolved FROM spotify_artists"
+        ).fetchone()
+        return int(row["total"]), int(row["resolved"])
