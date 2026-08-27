@@ -29,9 +29,12 @@ def _build_llm_client(cfg: Config, store: CacheStore) -> LLMClient:
               help="Top-N picks per run after diversity guard.")
 @click.option("--budget", type=int, default=800, show_default=True,
               help="Hard cap on Discogs API calls during the graph walk.")
-@click.option("--scope", type=click.Choice(["collection", "wantlist", "both"]),
+@click.option("--scope",
+              type=click.Choice(["collection", "wantlist", "both", "spotify", "all"]),
               default="both", show_default=True,
-              help="Which library half supplies seed artists.")
+              help="Which library supplies seed artists. 'spotify' uses the "
+                   "imported listening history; 'all' uses it alongside "
+                   "the collection and wantlist.")
 @click.option("--no-influences", "no_influences", is_flag=True,
               help="Skip Stage 1.5 (Claude-derived influence expansion).")
 @click.option("--no-enrich", "no_enrich", is_flag=True,

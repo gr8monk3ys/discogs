@@ -1,68 +1,91 @@
-from collections.abc import Iterator
-from pathlib import Path
+"""Tests for artist-name resolution.
+
+Resolution decides which Discogs artist a Spotify artist *is*, and every
+recommendation seeded from it inherits that decision. So most of these
+are about refusing to guess.
+
+The payload shape here is the real one, confirmed against the live API:
+the name lives in `data["title"]`, `hit.title` is None, and there is no
+score field anywhere.
+"""
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
-import pytest
-
-from discogs.api.client import DiscogsClient
 from discogs.api.search import resolve_artist_name
-from discogs.cache.store import CacheStore, init_db
-from discogs.config import Config
 
 
-@pytest.fixture
-def setup(tmp_path: Path) -> Iterator[tuple[CacheStore, DiscogsClient]]:
-    cfg = Config(
-        discogs_token="t", discogs_username="u",
-        cache_path=tmp_path / "cache.db", daily_api_budget=100,
-    )
-    init_db(cfg.cache_path)
-    store = CacheStore(cfg.cache_path)
-    client = DiscogsClient(cfg, store, upstream_factory=lambda *a, **kw: MagicMock())
-    yield store, client
-    store.close()
+class _Hit:
+    """An artist search result as the Discogs client actually returns it."""
+
+    def __init__(self, hit_id: int, title: str) -> None:
+        self.id = hit_id
+        self.title = None  # genuinely None for artist results
+        self.data = {"id": hit_id, "title": title, "type": "artist"}
 
 
-def _hit(rid: int, title: str, score: float) -> MagicMock:
-    h = MagicMock()
-    h.id = rid
-    h.title = title
-    h.data = {"score": score}
-    return h
+def _client(hits: list[_Hit]) -> MagicMock:
+    client = MagicMock()
+    client.call.return_value = hits
+    return client
 
 
-def test_resolve_returns_top_hit_above_threshold(setup) -> None:
-    _, client = setup
-    client.upstream.search.return_value = [
-        _hit(1, "Pharoah Sanders", 0.95),
-        _hit(2, "Pharoah Sanders Quartet", 0.7),
-    ]
+def test_resolves_an_artist_that_has_no_score_field() -> None:
+    """The defect this replaces: the resolver demanded `score >= 0.85`
+    from a key the API never sends, so every lookup returned None."""
+    client = _client([_Hit(125246, "Nirvana")])
 
-    result = resolve_artist_name(client, "Pharoah Sanders", min_score=0.85)
-    assert result is not None
-    assert result == (1, "Pharoah Sanders")
+    assert resolve_artist_name(client, "Nirvana") == (125246, "Nirvana")
 
 
-def test_resolve_returns_none_below_threshold(setup) -> None:
-    _, client = setup
-    client.upstream.search.return_value = [
-        _hit(1, "Pharoah Sanders", 0.5),
-    ]
-    assert resolve_artist_name(client, "Pharoah Sanders", min_score=0.85) is None
+def test_reads_the_name_from_the_payload_not_the_model() -> None:
+    """`hit.title` is None for artist results; comparing against it
+    matched nothing."""
+    hit = _Hit(307, "Boards Of Canada")
+    assert hit.title is None
+
+    assert resolve_artist_name(_client([hit]), "Boards of Canada") == (307, "Boards Of Canada")
 
 
-def test_resolve_returns_none_when_no_hits(setup) -> None:
-    _, client = setup
-    client.upstream.search.return_value = []
-    assert resolve_artist_name(client, "Imaginary Person", min_score=0.85) is None
+def test_the_unsuffixed_entry_wins_over_its_namesakes() -> None:
+    """Discogs disambiguates shared names with "(2)", "(10)" and treats
+    the plain one as primary — and it is not always listed first."""
+    client = _client([_Hit(1, "Nirvana (2)"), _Hit(125246, "Nirvana"), _Hit(3, "Nirvana (10)")])
+
+    assert resolve_artist_name(client, "Nirvana") == (125246, "Nirvana")
 
 
-def test_resolve_handles_missing_score_field(setup) -> None:
-    """If the search API doesn't include a score field, treat as 0 and reject."""
-    _, client = setup
-    h = MagicMock()
-    h.id = 1
-    h.title = "X"
-    h.data = {}
-    client.upstream.search.return_value = [h]
-    assert resolve_artist_name(client, "X", min_score=0.85) is None
+def test_only_suffixed_namesakes_stays_unresolved() -> None:
+    """Several distinct acts share the name and nothing in the query says
+    which. Unresolved is recoverable; wrong is not."""
+    client = _client([_Hit(179749, "Magma (6)"), _Hit(762706, "Magma (12)")])
+
+    assert resolve_artist_name(client, "Magma") is None
+
+
+def test_a_single_suffixed_hit_is_accepted() -> None:
+    """One candidate, no competition — the suffix only means Discogs
+    numbered it, not that it is ambiguous here."""
+    client = _client([_Hit(179749, "Zeuhl Orchestra (2)")])
+
+    assert resolve_artist_name(client, "Zeuhl Orchestra") == (179749, "Zeuhl Orchestra (2)")
+
+
+def test_a_near_miss_is_not_a_match() -> None:
+    client = _client([_Hit(1, "Boards Of Canada Tribute"), _Hit(2, "The Boards")])
+
+    assert resolve_artist_name(client, "Boards of Canada") is None
+
+
+def test_matching_ignores_case_and_padding() -> None:
+    client = _client([_Hit(9, "Boards Of Canada")])
+
+    assert resolve_artist_name(client, "  boards of canada ") == (9, "Boards Of Canada")
+
+
+def test_no_hits_at_all_is_not_an_error() -> None:
+    assert resolve_artist_name(_client([]), "Nobody") is None
+
+
+def test_an_empty_name_never_searches_for_everything() -> None:
+    assert resolve_artist_name(_client([]), "   ") is None
