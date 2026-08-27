@@ -13,6 +13,7 @@ from discogs.cli.commands.recommend import recommend_cmd
 from discogs.cli.commands.stats_cmd import stats_cmd
 from discogs.cli.commands.status import status_cmd
 from discogs.cli.commands.sync_cmd import sync_cmd
+from discogs.cli.commands.sync_spotify_cmd import sync_spotify_cmd
 from discogs.cli.commands.undo_cmd import undo_cmd, undo_last_batch_cmd
 
 
@@ -34,6 +35,7 @@ cli.add_command(diff_cmd)
 cli.add_command(stats_cmd)
 cli.add_command(import_spotify_cmd)
 cli.add_command(export_cmd)
+cli.add_command(sync_spotify_cmd)
 
 
 def main() -> None:
