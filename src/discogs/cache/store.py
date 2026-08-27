@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def init_db(path: Path) -> None:
@@ -64,7 +64,14 @@ def _stamp_version(conn: sqlite3.Connection, version: int) -> None:
 def _apply_migrations(conn: sqlite3.Connection, *, from_version: int) -> None:
     for version in range(from_version + 1, CURRENT_SCHEMA_VERSION + 1):
         migration = MIGRATIONS_DIR / f"v{version}.sql"
-        conn.executescript(migration.read_text())
+        try:
+            conn.executescript(migration.read_text())
+        except sqlite3.OperationalError as exc:
+            # schema.sql runs first and creates any *missing* table in its
+            # current shape, so an ALTER that adds a column to a table that
+            # did not exist at the stored version finds it already there.
+            if "duplicate column name" not in str(exc):
+                raise
         _stamp_version(conn, version)
 
 
@@ -98,16 +105,17 @@ class CacheStore:
             self.conn.execute(
                 """
                 INSERT INTO releases (
-                    id, master_id, title, year, country, formats_json,
+                    id, master_id, title, year, country, formats_json, artists_json,
                     community_have, community_want, community_avg_rating,
                     community_rating_count, fetched_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     master_id=excluded.master_id,
                     title=excluded.title,
                     year=excluded.year,
                     country=excluded.country,
                     formats_json=excluded.formats_json,
+                    artists_json=excluded.artists_json,
                     community_have=excluded.community_have,
                     community_want=excluded.community_want,
                     community_avg_rating=excluded.community_avg_rating,
@@ -117,6 +125,7 @@ class CacheStore:
                 (
                     release.id, release.master_id, release.title, release.year,
                     release.country, json.dumps([f.model_dump() for f in release.formats]),
+                    json.dumps(release.artists),
                     release.community_have, release.community_want,
                     release.community_avg_rating, release.community_rating_count,
                     release.fetched_at.isoformat(),
@@ -158,6 +167,7 @@ class CacheStore:
             year=row["year"],
             country=row["country"],
             formats=formats,
+            artists=json.loads(row["artists_json"] or "[]"),
             styles=styles,
             genres=genres,
             community_have=row["community_have"],

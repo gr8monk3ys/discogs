@@ -162,3 +162,31 @@ def test_fetch_release_includes_track_extraartists(setup) -> None:
     fetch_release(client, store, 100)
     credits = store.get_release_credits(100)
     assert (3, "Bass") in {(c.artist_id, c.role) for c in credits}
+
+
+def test_release_from_raw_reads_artists_and_strips_disambiguator() -> None:
+    from types import SimpleNamespace
+
+    from discogs.api.releases import _release_from_raw
+
+    raw = SimpleNamespace(
+        id=1, title="T", year=2000, master_id=None, country=None,
+        formats=[], styles=[], genres=[], community=None,
+        artists=[SimpleNamespace(name="Nirvana (2)"), SimpleNamespace(name="Foo")],
+    )
+    assert _release_from_raw(raw).artists == ["Nirvana", "Foo"]
+
+
+def test_fetch_release_refetches_when_artists_missing(setup) -> None:
+    _, store, client = setup
+    raw = _fake_raw_release(rid=100)
+    raw.artists = [MagicMock(name="x")]
+    raw.artists[0].name = "Pharoah Sanders"
+    client.upstream.release.return_value = raw
+
+    first = fetch_release(client, store, 100)
+    assert first.artists == ["Pharoah Sanders"]
+    # Simulate a pre-v4 row: same release, artists wiped.
+    store.upsert_release(first.model_copy(update={"artists": []}))
+    assert fetch_release(client, store, 100).artists == []
+    assert fetch_release(client, store, 100, force_artists=True).artists == ["Pharoah Sanders"]

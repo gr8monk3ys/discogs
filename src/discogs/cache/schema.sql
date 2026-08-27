@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS releases (
     year INTEGER NOT NULL,
     country TEXT,
     formats_json TEXT NOT NULL,
+    artists_json TEXT NOT NULL DEFAULT '[]',
     community_have INTEGER NOT NULL,
     community_want INTEGER NOT NULL,
     community_avg_rating REAL NOT NULL,
