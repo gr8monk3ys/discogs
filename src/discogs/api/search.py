@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from discogs_client.exceptions import HTTPError
+
 from discogs.api.client import DiscogsClient
 from discogs.spotify.names import key, strip_edition
 
@@ -94,8 +96,14 @@ def _main_release_id(client: DiscogsClient, hit: object, master_id: int) -> int 
     data: Any = getattr(hit, "data", None)
     if isinstance(data, dict) and data.get("main_release") is not None:
         return int(data["main_release"])
-    master = client.call("master", master_id)
-    main = getattr(master, "main_release", None)
+    # The live search payload never carries main_release (verified 2026-08-27),
+    # so this fetch is the norm. A master the search still lists can 404 on
+    # fetch (deleted or merged); that hit is dropped rather than fatal.
+    try:
+        master = client.call("master", master_id)
+        main = getattr(master, "main_release", None)
+    except HTTPError:
+        return None
     main_id = getattr(main, "id", main)
     return int(main_id) if main_id is not None else None
 
