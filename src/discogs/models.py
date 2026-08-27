@@ -19,6 +19,7 @@ class Release(BaseModel):
     year: int
     country: str | None = None
     formats: list[Format] = Field(default_factory=list)
+    artists: list[str] = Field(default_factory=list)
     styles: list[str] = Field(default_factory=list)
     genres: list[str] = Field(default_factory=list)
     community_have: int
