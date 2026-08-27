@@ -163,3 +163,17 @@ def test_resolve_release_treats_a_vanished_master_as_unresolved() -> None:
     client.call.side_effect = [[_MasterHit(7, "X - Y", None)], HTTPError("gone", 404)]
 
     assert resolve_release(client, "X", "Y") is None
+
+
+def test_resolve_release_drops_a_master_whose_fetch_returns_no_json() -> None:
+    """A throttled Discogs fetch comes back with an empty body, which the
+    client library raises as JSONDecodeError (a ValueError). The hit is
+    dropped like a 404 rather than ending the run."""
+    import json
+
+    client = MagicMock()
+    client.call.side_effect = [
+        [_MasterHit(7, "X - Y", None)],
+        json.JSONDecodeError("Expecting value", "", 0),
+    ]
+    assert resolve_release(client, "X", "Y") is None

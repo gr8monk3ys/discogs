@@ -7,7 +7,7 @@ from typing import Any
 
 from discogs_client.exceptions import HTTPError
 
-from discogs.api.client import DiscogsClient
+from discogs.api.client import BudgetExceeded, DiscogsClient
 from discogs.spotify.names import key, strip_edition
 
 # Discogs disambiguates artists who share a name with a numeric suffix:
@@ -99,10 +99,16 @@ def _main_release_id(client: DiscogsClient, hit: object, master_id: int) -> int 
     # The live search payload never carries main_release (verified 2026-08-27),
     # so this fetch is the norm. A master the search still lists can 404 on
     # fetch (deleted or merged); that hit is dropped rather than fatal.
+    # Discogs also answers a throttled fetch with an empty body, which the
+    # client library turns into a JSONDecodeError rather than an HTTPError;
+    # one bad master must not end a run of fifty. BudgetExceeded still
+    # propagates — that one is ours, and it means stop.
     try:
         master = client.call("master", master_id)
         main = getattr(master, "main_release", None)
-    except HTTPError:
+    except BudgetExceeded:
+        raise
+    except (HTTPError, ValueError):
         return None
     main_id = getattr(main, "id", main)
     return int(main_id) if main_id is not None else None
