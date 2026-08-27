@@ -25,11 +25,17 @@ _PUNCT = re.compile(r"[^\w\s]")
 _SPACE = re.compile(r"\s+")
 
 
+def strip_edition(text: str) -> str:
+    """Drop edition noise and a trailing bracket, keeping case and punctuation.
+
+    For search queries: "In Utero (Deluxe Edition)" -> "In Utero"."""
+    cleaned = _EDITION.sub("", text)
+    return _BRACKETS.sub("", cleaned).strip()
+
+
 def normalise(text: str) -> str:
     """Strip edition noise, punctuation and casing from a title or artist."""
-    cleaned = _EDITION.sub("", text)
-    cleaned = _BRACKETS.sub("", cleaned)
-    cleaned = _PUNCT.sub(" ", cleaned)
+    cleaned = _PUNCT.sub(" ", strip_edition(text))
     return _SPACE.sub(" ", cleaned).strip().casefold()
 
 
