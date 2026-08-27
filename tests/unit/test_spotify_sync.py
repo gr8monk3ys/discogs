@@ -87,3 +87,11 @@ def test_one_record_under_several_spotify_ids_is_one_candidate() -> None:
         min_affinity=0.6, min_liked=4,
     )
     assert len(plan.candidates) == 1
+
+
+def test_strip_edition_keeps_case_for_search_queries() -> None:
+    from discogs.spotify.names import strip_edition
+
+    assert strip_edition("In Utero (Deluxe Edition)") == "In Utero"
+    assert strip_edition("OK Computer - Remastered 2011") == "OK Computer"
+    assert strip_edition("Kid A") == "Kid A"

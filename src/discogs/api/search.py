@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from discogs.api.client import DiscogsClient
+from discogs.spotify.names import key, strip_edition
 
 # Discogs disambiguates artists who share a name with a numeric suffix:
 # "Nirvana", "Nirvana (2)", "Nirvana (10)". The suffix is not part of the
@@ -71,3 +73,63 @@ def resolve_artist_name(client: DiscogsClient, name: str) -> tuple[int, str] | N
     if len(matches) == 1:
         return matches[0]
     return None  # several distinct acts share the name; refuse to pick one
+
+
+@dataclass(frozen=True)
+class ResolvedRelease:
+    """The one Discogs release an artist/title pair names, via its master."""
+
+    release_id: int
+    master_id: int | None
+    canonical: str
+
+
+def _hit_id(hit: object) -> int | None:
+    raw = getattr(hit, "id", None) or (getattr(hit, "data", None) or {}).get("id")
+    return int(raw) if raw is not None else None
+
+
+def _main_release_id(client: DiscogsClient, hit: object, master_id: int) -> int | None:
+    """From the search payload when present; one extra call otherwise."""
+    data: Any = getattr(hit, "data", None)
+    if isinstance(data, dict) and data.get("main_release") is not None:
+        return int(data["main_release"])
+    master = client.call("master", master_id)
+    main = getattr(master, "main_release", None)
+    main_id = getattr(main, "id", main)
+    return int(main_id) if main_id is not None else None
+
+
+def resolve_release(client: DiscogsClient, artist: str, title: str) -> ResolvedRelease | None:
+    """Search Discogs masters for *artist* + *title*; return the main release.
+
+    Master search results title themselves "Artist - Title". A hit counts
+    when its normalised pair equals ours (edition noise, punctuation, case
+    and a leading article ignored). Exactly one distinct answer is
+    returned; zero or several is None — a wrong release on the wantlist is
+    worse than a missing one.
+    """
+    wanted = key(artist, title)
+    if not wanted[0] or not wanted[1]:
+        return None
+
+    matches: dict[int, tuple[int, str]] = {}  # release_id -> (master_id, canonical)
+    for hit in client.call("search", f"{artist} {strip_edition(title)}", type="master"):
+        canonical = _title_of(hit)
+        hit_artist, sep, hit_title = canonical.partition(" - ")
+        if not sep:
+            continue
+        if key(hit_artist, hit_title) != wanted:
+            continue
+        master_id = _hit_id(hit)
+        if master_id is None:
+            continue
+        release_id = _main_release_id(client, hit, master_id)
+        if release_id is None:
+            continue
+        matches.setdefault(release_id, (master_id, canonical))
+
+    if len(matches) != 1:
+        return None
+    release_id, (master_id, canonical) = next(iter(matches.items()))
+    return ResolvedRelease(release_id=release_id, master_id=master_id, canonical=canonical)
