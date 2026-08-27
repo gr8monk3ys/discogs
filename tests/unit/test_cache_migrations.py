@@ -107,3 +107,21 @@ def test_init_db_idempotent(tmp_path: Path) -> None:
         assert store.schema_version == CURRENT_SCHEMA_VERSION
     finally:
         store.close()
+
+
+def test_v3_database_gains_artists_column(tmp_path: Path) -> None:
+    from discogs.cache.store import SCHEMA_FILE
+
+    db = tmp_path / "cache.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(SCHEMA_FILE.read_text())
+    conn.execute("DELETE FROM schema_version")
+    conn.execute("INSERT INTO schema_version VALUES (3, 'x')")
+    conn.commit()
+    conn.close()
+
+    init_db(db)
+
+    post = sqlite3.connect(db)
+    assert "artists_json" in _columns(post, "releases")
+    post.close()

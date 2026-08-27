@@ -141,3 +141,38 @@ def test_an_artist_without_a_spotify_id_is_dropped(tmp_path: Path) -> None:
         ]
     )
     assert interchange.distinct_artists(interchange.load(_write(tmp_path, doc))) == []
+
+
+def test_albums_carry_genres_when_present() -> None:
+    from discogs.spotify.interchange import albums
+
+    doc = {
+        "schema": "music-library/1",
+        "albums": [
+            {
+                "spotify_album_id": "a", "title": "T",
+                "artists": [{"spotify_id": "x", "name": "X"}],
+                "liked_track_count": 1, "genres": ["grunge", "rock"],
+            },
+            {
+                "spotify_album_id": "b", "title": "U",
+                "artists": [{"spotify_id": "x", "name": "X"}],
+                "liked_track_count": 1,
+            },
+        ],
+    }
+    got = {a.spotify_album_id: a.genres for a in albums(doc)}
+    assert got == {"a": ("grunge", "rock"), "b": ()}
+
+
+def test_default_path_prefers_music_dir_when_the_file_exists(tmp_path, monkeypatch) -> None:
+    from discogs.spotify import interchange
+
+    monkeypatch.setenv("MUSIC_DIR", str(tmp_path / "music"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    legacy = tmp_path / ".spotifyforge" / "music-library.json"
+    assert interchange.default_path() == legacy
+
+    (tmp_path / "music").mkdir()
+    (tmp_path / "music" / "music-library.json").write_text("{}")
+    assert interchange.default_path() == tmp_path / "music" / "music-library.json"

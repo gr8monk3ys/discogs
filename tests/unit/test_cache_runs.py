@@ -68,3 +68,12 @@ def test_display_id_uses_utc_second(store: CacheStore) -> None:
     # YYYY-MM-DD-HHMMSS, e.g. 2026-05-08-183045 (17 chars)
     assert len(display_id) == len("YYYY-MM-DD-HHMMSS")
     assert display_id[4] == "-" and display_id[7] == "-" and display_id[10] == "-"
+
+
+def test_two_runs_in_one_second_get_distinct_display_ids(tmp_path):
+    from discogs.cache.store import CacheStore, init_db
+    init_db(tmp_path / "c.db")
+    store = CacheStore(tmp_path / "c.db")
+    _, a = store.start_run({})
+    _, b = store.start_run({})
+    assert a != b and b.startswith(a[:17])

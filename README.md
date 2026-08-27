@@ -90,6 +90,22 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs explain <release-id>` | Show the sub-score breakdown for a recommended release, plus which runs surfaced it. |
 | `discogs diff <run-A> <run-B>` | Compare two runs' picks: added, dropped, and rescored releases (by display id). |
 | `discogs stats [--scope ...] [--top 10]` | Era / style / label distribution of your library (reads the cache, no API calls). |
+| `discogs sync-spotify [--limit 50] [--apply [--yes]]` | Plan wantlist changes from the Spotify library: favourites to add, owned records to prune. Dry-run by default; writes a digest and a run so `apply <id>` / `undo <id>` work. |
+| `discogs export [--out PATH]` | Write the cached collection and wantlist to `$MUSIC_DIR/discogs.json` (default `~/.music/`) for other tools to read. No API calls. |
+
+## Spotify → wantlist
+
+`discogs sync-spotify` reads the `music-library.json` that `spotifyforge export
+library` writes (from `$MUSIC_DIR`, default `~/.music/`, falling back to
+`~/.spotifyforge/`). Albums with `affinity ≥ 0.6` and at least 4 liked tracks
+(`[spotify] wantlist_min_affinity` / `wantlist_min_liked` in config) that are
+neither owned nor wanted are resolved to a Discogs master by normalised artist +
+title; anything matching zero or several masters is listed as unresolved and
+never guessed. Wantlist entries whose master is now in the collection are
+proposed for pruning. Every run is dry by default: read the digest under
+`~/.discogs/digests/`, then `discogs apply <id>` for the additions or re-run
+with `--apply` to also remove the prunes. Run `discogs sync --force` first so
+the cache carries each release's artists.
 
 ## Development
 

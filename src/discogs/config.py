@@ -19,6 +19,11 @@ def _default_digests_dir() -> Path:
     return Path.home() / ".discogs" / "digests"
 
 
+def _default_music_dir() -> Path:
+    """The directory the music repos share (`MUSIC_DIR`, default ~/.music)."""
+    return Path(os.environ.get("MUSIC_DIR") or Path.home() / ".music").expanduser()
+
+
 @dataclass
 class Config:
     discogs_token: str = field(repr=False)
@@ -26,17 +31,23 @@ class Config:
     anthropic_api_key: str | None = field(default=None, repr=False)
     cache_path: Path = field(default_factory=_default_cache_path)
     digests_dir: Path = field(default_factory=_default_digests_dir)
+    music_dir: Path = field(default_factory=_default_music_dir)
     user_agent: str = "discogs-recommender/0.1.0 (+https://github.com/gr8monk3ys/discogs)"
     daily_api_budget: int = 1500
     daily_llm_budget: int = 100
     influences_model: str = "claude-haiku-4-5-20251001"
     enrich_model: str = "claude-haiku-4-5-20251001"
+    # `discogs sync-spotify`: how much of a Spotify album must be liked before
+    # it is worth a wantlist entry.
+    wantlist_min_affinity: float = 0.6
+    wantlist_min_liked: int = 4
 
     def __repr__(self) -> str:
         return (
             f"Config(discogs_token='***', discogs_username={self.discogs_username!r}, "
             f"anthropic_api_key={'***' if self.anthropic_api_key else None}, "
             f"cache_path={self.cache_path!r}, digests_dir={self.digests_dir!r}, "
+            f"music_dir={self.music_dir!r}, "
             f"user_agent={self.user_agent!r}, "
             f"daily_api_budget={self.daily_api_budget}, "
             f"daily_llm_budget={self.daily_llm_budget}, "
@@ -76,6 +87,10 @@ def load_config(path: Path | None = None) -> Config:
     cache_path_str = data.get("cache", {}).get("path")
     cache_path = Path(cache_path_str).expanduser() if cache_path_str else _default_cache_path()
 
+    spotify_section = data.get("spotify", {})
+    wantlist_min_affinity = float(spotify_section.get("wantlist_min_affinity", 0.6))
+    wantlist_min_liked = int(spotify_section.get("wantlist_min_liked", 4))
+
     return Config(
         discogs_token=token,
         discogs_username=username,
@@ -84,4 +99,6 @@ def load_config(path: Path | None = None) -> Config:
         daily_llm_budget=daily_llm_budget,
         influences_model=influences_model,
         enrich_model=enrich_model,
+        wantlist_min_affinity=wantlist_min_affinity,
+        wantlist_min_liked=wantlist_min_liked,
     )

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from discogs.api.client import DiscogsClient
+from discogs.api.search import _DISAMBIGUATOR
 from discogs.cache.store import CacheStore
 from discogs.models import Credit, Format, Label, Release
 
@@ -43,7 +44,7 @@ def _int_or_none(v: Any) -> int | None:
 
 def fetch_release(
     client: DiscogsClient, store: CacheStore, release_id: int,
-    *, force_credits: bool = False,
+    *, force_credits: bool = False, force_artists: bool = False,
 ) -> Release:
     """Return a Release for `release_id`, fetching from API if cache is missing or stale.
 
@@ -52,14 +53,18 @@ def fetch_release(
 
     If `force_credits` is True and the release has no cached credits (e.g. because
     it was stored before credit-fetching was implemented), a fresh API call is made
-    regardless of the release TTL.
+    regardless of the release TTL. `force_artists` does the same for a cached
+    row with no artists (stored before schema v4).
     """
     age = store.release_age(release_id)
     credits_missing = force_credits and not store.get_release_credits(release_id)
-    if age is not None and age < RELEASE_TTL and not credits_missing:
-        cached = store.get_release(release_id)
-        if cached is not None:
-            return cached
+    cached = store.get_release(release_id)
+    artists_missing = force_artists and cached is not None and not cached.artists
+    if (
+        age is not None and age < RELEASE_TTL
+        and not credits_missing and not artists_missing and cached is not None
+    ):
+        return cached
 
     raw = client.call("release", release_id)
     release = _release_from_raw(raw)
@@ -88,6 +93,7 @@ def _release_from_raw(raw: Any) -> Release:
             )
             for f in (getattr(raw, "formats", None) or [])
         ],
+        artists=_artist_names(raw),
         styles=list(getattr(raw, "styles", None) or []),
         genres=list(getattr(raw, "genres", None) or []),
         community_have=int(getattr(community, "have", None) or 0),
@@ -96,6 +102,16 @@ def _release_from_raw(raw: Any) -> Release:
         community_rating_count=int(getattr(rating, "count", None) or 0),
         fetched_at=datetime.now(UTC),
     )
+
+
+def _artist_names(raw: Any) -> list[str]:
+    """Main credited artists, with the Discogs "(2)" disambiguator removed."""
+    out: list[str] = []
+    for artist in getattr(raw, "artists", None) or []:
+        name = str(getattr(artist, "name", "") or "").strip()
+        if name:
+            out.append(_DISAMBIGUATOR.sub("", name).strip())
+    return out
 
 
 def _credits_from_raw(raw: Any, release_id: int) -> list[Credit]:

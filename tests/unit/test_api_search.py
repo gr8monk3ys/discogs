@@ -89,3 +89,91 @@ def test_no_hits_at_all_is_not_an_error() -> None:
 
 def test_an_empty_name_never_searches_for_everything() -> None:
     assert resolve_artist_name(_client([]), "   ") is None
+
+
+# --- resolve_release -------------------------------------------------------
+
+from discogs.api.search import ResolvedRelease, resolve_release  # noqa: E402
+
+
+class _MasterHit:
+    """A master search result: `title` is "Artist - Title" in the payload."""
+
+    def __init__(self, hit_id: int, title: str, main: int | None) -> None:
+        self.id = hit_id
+        self.title = None
+        self.data = {"id": hit_id, "title": title, "type": "master"}
+        if main is not None:
+            self.data["main_release"] = main
+
+
+def test_resolve_release_matches_normalised_artist_dash_title() -> None:
+    client = _client([_MasterHit(7, "Nirvana (2) - In Utero", 1)])
+
+    r = resolve_release(client, "Nirvana", "In Utero (Deluxe Edition)")
+
+    assert r == ResolvedRelease(release_id=1, master_id=7, canonical="Nirvana (2) - In Utero")
+    client.call.assert_called_once_with("search", "Nirvana In Utero", type="master")
+
+
+def test_resolve_release_refuses_ambiguity() -> None:
+    client = _client([_MasterHit(7, "X - Y", 1), _MasterHit(8, "X - Y", 2)])
+
+    assert resolve_release(client, "X", "Y") is None
+
+
+def test_resolve_release_refuses_a_different_title() -> None:
+    client = _client([_MasterHit(7, "Nirvana - Nevermind", 1)])
+
+    assert resolve_release(client, "Nirvana", "In Utero") is None
+
+
+def test_resolve_release_treats_hits_sharing_a_main_release_as_one_answer() -> None:
+    client = _client([
+        _MasterHit(7, "The Beatles - Abbey Road", 1), _MasterHit(8, "Beatles - Abbey Road", 1),
+    ])
+
+    r = resolve_release(client, "Beatles", "Abbey Road")
+
+    assert r is not None and r.release_id == 1
+
+
+def test_resolve_release_fetches_the_master_when_main_release_is_absent() -> None:
+    client = _client([_MasterHit(7, "X - Y", None)])
+    master = MagicMock()
+    master.main_release.id = 42
+    client.call.side_effect = [[_MasterHit(7, "X - Y", None)], master]
+
+    r = resolve_release(client, "X", "Y")
+
+    assert r == ResolvedRelease(release_id=42, master_id=7, canonical="X - Y")
+    assert client.call.call_args_list[1].args == ("master", 7)
+
+
+def test_resolve_release_with_no_hits_is_none() -> None:
+    assert resolve_release(_client([]), "Nobody", "Nothing") is None
+
+
+def test_resolve_release_treats_a_vanished_master_as_unresolved() -> None:
+    """Search can return a master that 404s on fetch (deleted/merged).
+    That hit is dropped, not fatal."""
+    from discogs_client.exceptions import HTTPError
+
+    client = _client([_MasterHit(7, "X - Y", None)])
+    client.call.side_effect = [[_MasterHit(7, "X - Y", None)], HTTPError("gone", 404)]
+
+    assert resolve_release(client, "X", "Y") is None
+
+
+def test_resolve_release_drops_a_master_whose_fetch_returns_no_json() -> None:
+    """A throttled Discogs fetch comes back with an empty body, which the
+    client library raises as JSONDecodeError (a ValueError). The hit is
+    dropped like a 404 rather than ending the run."""
+    import json
+
+    client = MagicMock()
+    client.call.side_effect = [
+        [_MasterHit(7, "X - Y", None)],
+        json.JSONDecodeError("Expecting value", "", 0),
+    ]
+    assert resolve_release(client, "X", "Y") is None

@@ -8,12 +8,29 @@ without an API at all.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 SCHEMA = "music-library/1"
-DEFAULT_PATH = Path.home() / ".spotifyforge" / "music-library.json"
+_LEGACY_PATH = Path("~") / ".spotifyforge" / "music-library.json"
+
+
+def default_path() -> Path:
+    """`$MUSIC_DIR/music-library.json` (MUSIC_DIR defaults to ~/.music) when
+    that file exists, else the path spotifyforge wrote to before the shared
+    directory existed. Resolved at call time so tests can point HOME and
+    MUSIC_DIR elsewhere."""
+    music_dir = Path(os.environ.get("MUSIC_DIR") or Path.home() / ".music").expanduser()
+    shared = music_dir / "music-library.json"
+    if shared.exists():
+        return shared
+    return _LEGACY_PATH.expanduser()
+
+
+# For `--file` help text only; `load` resolves the path when it runs.
+DEFAULT_PATH = default_path()
 
 
 class InterchangeError(Exception):
@@ -41,6 +58,7 @@ class SpotifyAlbum:
     total_tracks: int | None
     affinity: float
     isrcs: tuple[str, ...]
+    genres: tuple[str, ...] = ()
 
 
 def load(path: Path | None = None) -> dict[str, Any]:
@@ -50,7 +68,7 @@ def load(path: Path | None = None) -> dict[str, Any]:
     this file, and a silently-changed shape would show up as wrong
     recommendations rather than as an error.
     """
-    target = path or DEFAULT_PATH
+    target = path or default_path()
     if not target.exists():
         raise InterchangeError(
             f"No interchange file at {target}. "
@@ -94,6 +112,7 @@ def albums(data: dict[str, Any]) -> list[SpotifyAlbum]:
                 total_tracks=int(raw["total_tracks"]) if raw.get("total_tracks") else None,
                 affinity=float(raw.get("affinity") or 0.0),
                 isrcs=tuple(str(i) for i in raw.get("isrcs") or []),
+                genres=tuple(str(g) for g in raw.get("genres") or []),
             )
         )
     out.sort(key=lambda a: (-a.liked_track_count, a.title))
