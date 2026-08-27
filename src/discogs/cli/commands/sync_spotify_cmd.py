@@ -15,6 +15,7 @@ from discogs.recommend.apply import apply_run
 from discogs.spotify import interchange
 from discogs.spotify.sync import Candidate, plan_sync
 from discogs.spotify.sync_digest import render_sync_digest
+from discogs.sync.syncer import Syncer
 from discogs.wantlist_writer import remove_from_wantlist
 
 
@@ -56,8 +57,14 @@ def sync_spotify_cmd(file_path: Path | None, limit: int, do_apply: bool, skip_co
     store = CacheStore(cfg.cache_path)
     client = DiscogsClient(cfg, store)
     try:
+        # The wantlist is what this command changes, so the 24h TTL is
+        # wrong for it: a second pass an hour after the first must see the
+        # first pass's additions or it re-proposes every one of them.
+        # Two API calls; the collection keeps its TTL.
+        Syncer(cfg, store, client).sync(scope="wantlist", force=True)
         collection = _releases(client, store, store.collection_release_ids())
-        wantlist = _releases(client, store, store.wantlist_release_ids())
+        wanted_ids = store.wantlist_release_ids()
+        wantlist = _releases(client, store, wanted_ids)
         plan = plan_sync(
             albums, collection, wantlist,
             min_affinity=cfg.wantlist_min_affinity, min_liked=cfg.wantlist_min_liked,
@@ -81,9 +88,13 @@ def sync_spotify_cmd(file_path: Path | None, limit: int, do_apply: bool, skip_co
             {"kind": "spotify-sync", "file": str(file_path or interchange.default_path()),
              "limit": limit, "apply": do_apply},
         )
+        # Name matching runs before resolution; this is the same guard on
+        # the resolved id, for a release the wantlist holds under a name
+        # the matcher did not join, or one an earlier run already pushed.
+        already = wanted_ids | store.applied_release_ids()
         seen: set[int] = set()
         for candidate, hit in resolved:
-            if hit.release_id in seen:
+            if hit.release_id in seen or hit.release_id in already:
                 continue
             seen.add(hit.release_id)
             store.record_recommendation(run_id, hit.release_id, score=candidate.affinity)

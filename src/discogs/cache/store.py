@@ -401,7 +401,14 @@ class CacheStore:
         """
         run_id = str(uuid.uuid4())
         now = datetime.now(UTC)
-        display_id = now.strftime("%Y-%m-%d-%H%M%S")
+        base = now.strftime("%Y-%m-%d-%H%M%S")
+        # Second resolution collides when two runs start within one second
+        # (a scripted pass straight after another); suffix rather than fail.
+        display_id = base
+        n = 2
+        while self.get_run_by_display_id(display_id) is not None:
+            display_id = f"{base}-{n}"
+            n += 1
         with self.conn:
             self.conn.execute(
                 "INSERT INTO runs (id, display_id, started_at, args_json) VALUES (?, ?, ?, ?)",
@@ -427,6 +434,16 @@ class CacheStore:
                 (release_id, run_id, score,
                  json.dumps(subscores) if subscores is not None else None),
             )
+
+    def applied_release_ids(self) -> set[int]:
+        """Releases some run has pushed to the wantlist and not since removed."""
+        return {
+            int(r["release_id"])
+            for r in self.conn.execute(
+                "SELECT DISTINCT release_id FROM recommendation_history "
+                "WHERE applied_to_wantlist = 1"
+            )
+        }
 
     def previously_recommended_release_ids(self) -> set[int]:
         return {

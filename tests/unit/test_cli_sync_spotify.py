@@ -72,6 +72,7 @@ def test_dry_run_plans_and_records_but_writes_nothing(tmp_path: Path) -> None:
     with (
         patch(f"{CMD}.load_config", return_value=cfg),
         patch(f"{CMD}.DiscogsClient", return_value=client),
+        patch(f"{CMD}.Syncer"),
         patch(f"{CMD}.resolve_release", side_effect=_resolve),
     ):
         result = runner.invoke(cli, ["sync-spotify", "--file", str(library)])
@@ -105,6 +106,7 @@ def test_apply_pushes_additions_and_removes_prunes(tmp_path: Path) -> None:
     with (
         patch(f"{CMD}.load_config", return_value=cfg),
         patch(f"{CMD}.DiscogsClient", return_value=client),
+        patch(f"{CMD}.Syncer"),
         patch(f"{CMD}.resolve_release", side_effect=_resolve),
         patch("discogs.recommend.apply.push_to_wantlist",
               return_value=PushResult(release_id=100, ok=True, error=None)) as push,
@@ -127,6 +129,7 @@ def test_unresolved_candidates_are_listed_never_guessed(tmp_path: Path) -> None:
     with (
         patch(f"{CMD}.load_config", return_value=cfg),
         patch(f"{CMD}.DiscogsClient", return_value=MagicMock()),
+        patch(f"{CMD}.Syncer"),
         patch(f"{CMD}.resolve_release", return_value=None),
     ):
         result = runner.invoke(cli, ["sync-spotify", "--file", str(library)])
@@ -141,3 +144,34 @@ def test_missing_library_is_a_clean_error(tmp_path: Path) -> None:
 
     assert result.exit_code != 0
     assert "spotifyforge export library" in result.output
+
+
+def test_a_second_pass_does_not_re_add_what_the_first_applied(tmp_path: Path) -> None:
+    """The first live run re-proposed all 34 of its own additions an hour
+    later: the wantlist cache was inside its TTL and still empty of them.
+    The wantlist is now refreshed before planning, and a resolved id an
+    earlier run already pushed is skipped even if the name join missed."""
+    cfg, library = _seed(tmp_path)
+    client = MagicMock()
+    patches = (
+        patch(f"{CMD}.load_config", return_value=cfg),
+        patch(f"{CMD}.DiscogsClient", return_value=client),
+        patch(f"{CMD}.Syncer"),
+        patch(f"{CMD}.resolve_release", side_effect=_resolve),
+        patch("discogs.recommend.apply.push_to_wantlist",
+              side_effect=lambda c, *, username, release_id: PushResult(release_id, True, None)),
+        patch(f"{CMD}.remove_from_wantlist",
+              side_effect=lambda c, *, username, release_id: RemoveResult(release_id, "removed", None)),
+    )
+    for p in patches:
+        p.start()
+    try:
+        first = runner.invoke(cli, ["sync-spotify", "--file", str(library), "--apply", "--yes"])
+        assert first.exit_code == 0, first.output
+        assert "1 to add" in first.output
+        second = runner.invoke(cli, ["sync-spotify", "--file", str(library), "--apply", "--yes"])
+        assert second.exit_code == 0, second.output
+        assert "0 to add" in second.output
+    finally:
+        for p in patches:
+            p.stop()
