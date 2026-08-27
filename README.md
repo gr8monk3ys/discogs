@@ -90,6 +90,7 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs explain <release-id>` | Show the sub-score breakdown for a recommended release, plus which runs surfaced it. |
 | `discogs diff <run-A> <run-B>` | Compare two runs' picks: added, dropped, and rescored releases (by display id). |
 | `discogs stats [--scope ...] [--top 10]` | Era / style / label distribution of your library (reads the cache, no API calls). |
+| `discogs export [--out PATH]` | Write the cached collection and wantlist to `$MUSIC_DIR/discogs.json` (default `~/.music/`) for other tools to read. No API calls. |
 
 ## Development
 
