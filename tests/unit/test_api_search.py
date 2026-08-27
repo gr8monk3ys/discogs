@@ -152,3 +152,14 @@ def test_resolve_release_fetches_the_master_when_main_release_is_absent() -> Non
 
 def test_resolve_release_with_no_hits_is_none() -> None:
     assert resolve_release(_client([]), "Nobody", "Nothing") is None
+
+
+def test_resolve_release_treats_a_vanished_master_as_unresolved() -> None:
+    """Search can return a master that 404s on fetch (deleted/merged).
+    That hit is dropped, not fatal."""
+    from discogs_client.exceptions import HTTPError
+
+    client = _client([_MasterHit(7, "X - Y", None)])
+    client.call.side_effect = [[_MasterHit(7, "X - Y", None)], HTTPError("gone", 404)]
+
+    assert resolve_release(client, "X", "Y") is None
