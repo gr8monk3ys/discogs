@@ -315,6 +315,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "click" },
+    { name = "media-core" },
     { name = "pydantic" },
     { name = "python3-discogs-client" },
     { name = "rich" },
@@ -333,6 +334,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "click", specifier = ">=8.1" },
+    { name = "media-core", git = "https://github.com/gr8monk3ys/media-core?rev=v0.1.0" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "python3-discogs-client", specifier = ">=2.7" },
     { name = "rich", specifier = ">=13.0" },
@@ -603,6 +605,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec9
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
 ]
+
+[[package]]
+name = "media-core"
+version = "0.1.0"
+source = { git = "https://github.com/gr8monk3ys/media-core?rev=v0.1.0#f50e4e215bb8629368b114939719565baccbb0e8" }
 
 [[package]]
 name = "mypy"

@@ -1,53 +1,17 @@
 """Name normalisation for matching albums across libraries.
 
-Copied from rym/src/rym/match.py on purpose — the repos share a file format,
-not code — and the three copies must agree. A false match writes to a real
-account, so the rules are conservative and limited to noise that is
-provably not part of a title.
+These four functions were a verbatim copy of the same four in two other
+collection repos — the repos share a file format, not a process, so nothing at
+import time made them agree. A golden corpus, duplicated into three test suites,
+did. There is one implementation now, in `media_core.names`, and this module is
+the name this repo has always imported it under.
+
+Re-exported rather than replaced at every call site: `key` and `strip_edition`
+are used across the API and sync layers, and moving them would have turned a
+provable no-op into a diff nobody could check.
 """
 from __future__ import annotations
 
-import re
+from media_core.names import key, normalise, strip_article, strip_edition
 
-# Spotify decorates album titles in ways Discogs does not: "(Deluxe Edition)",
-# "- Remastered 2011", "(feat. ...)". These are editions of one record,
-# not different records.
-_EDITION = re.compile(
-    r"\s*[\(\[-]\s*("
-    r"deluxe|expanded|remaster|remastered|reissue|anniversary|special|"
-    r"bonus|deluxe edition|super deluxe|legacy|collector|mono|stereo|"
-    r"explicit|clean|international|japan|uk|us"
-    r")\b.*$",
-    re.IGNORECASE,
-)
-_BRACKETS = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]\s*$")
-_PUNCT = re.compile(r"[^\w\s]")
-_SPACE = re.compile(r"\s+")
-
-
-def strip_edition(text: str) -> str:
-    """Drop edition noise and a trailing bracket, keeping case and punctuation.
-
-    For search queries: "In Utero (Deluxe Edition)" -> "In Utero"."""
-    cleaned = _EDITION.sub("", text)
-    return _BRACKETS.sub("", cleaned).strip()
-
-
-def normalise(text: str) -> str:
-    """Strip edition noise, punctuation and casing from a title or artist."""
-    cleaned = _PUNCT.sub(" ", strip_edition(text))
-    return _SPACE.sub(" ", cleaned).strip().casefold()
-
-
-def strip_article(name: str) -> str:
-    """Normalise and drop a leading article: "The Beatles" and "Beatles" are one act."""
-    stripped = normalise(name)
-    for article in ("the ", "a ", "an "):
-        if stripped.startswith(article):
-            return stripped[len(article) :]
-    return stripped
-
-
-def key(artist: str, title: str) -> tuple[str, str]:
-    """The identity of a record for matching purposes."""
-    return (strip_article(artist), normalise(title))
+__all__ = ["key", "normalise", "strip_article", "strip_edition"]
