@@ -334,7 +334,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "click", specifier = ">=8.1" },
-    { name = "media-core", git = "https://github.com/gr8monk3ys/media-core?rev=v0.1.0" },
+    { name = "media-core", git = "https://github.com/gr8monk3ys/media-core?rev=v0.1.1" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "python3-discogs-client", specifier = ">=2.7" },
     { name = "rich", specifier = ">=13.0" },
@@ -608,8 +608,8 @@ wheels = [
 
 [[package]]
 name = "media-core"
-version = "0.1.0"
-source = { git = "https://github.com/gr8monk3ys/media-core?rev=v0.1.0#f50e4e215bb8629368b114939719565baccbb0e8" }
+version = "0.1.1"
+source = { git = "https://github.com/gr8monk3ys/media-core?rev=v0.1.1#47009b4edc8e22971087fdeb169c81d4077edf62" }
 
 [[package]]
 name = "mypy"

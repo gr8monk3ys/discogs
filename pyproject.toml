@@ -9,7 +9,7 @@ dependencies = [
     # identical by hand. Pinned to a tag: a change to normalisation is a
     # change to which release matches which, and it should arrive
     # deliberately.
-    "media-core @ git+https://github.com/gr8monk3ys/media-core@v0.1.0",
+    "media-core @ git+https://github.com/gr8monk3ys/media-core@v0.1.1",
     "python3-discogs-client>=2.7",
     "click>=8.1",
     "rich>=13.0",
