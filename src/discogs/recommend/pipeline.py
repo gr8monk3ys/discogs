@@ -22,7 +22,7 @@ from discogs.recommend.seeds import SeedArtist, select_seeds
 
 _INFLUENCE_DECAY = 0.6
 _CONFIDENCE_FACTOR = {"high": 1.0, "medium": 0.7, "low": 0.4}
-_VALID_SEED_MODES = ("collection", "wantlist", "both")
+_VALID_SEED_MODES = ("collection", "wantlist", "both", "spotify", "all")
 
 
 @dataclass(frozen=True)

@@ -71,3 +71,16 @@ def test_release_age_returns_seconds(store: CacheStore) -> None:
 
 def test_release_age_returns_none_when_missing(store: CacheStore) -> None:
     assert store.release_age(99999) is None
+
+
+def test_release_round_trips_artists(store: CacheStore) -> None:
+    store.upsert_release(
+        Release(
+            id=7, title="In Utero", year=1993, artists=["Nirvana"],
+            community_have=0, community_want=0, community_avg_rating=0.0,
+            community_rating_count=0, fetched_at=datetime.now(UTC),
+        )
+    )
+    fetched = store.get_release(7)
+    assert fetched is not None
+    assert fetched.artists == ["Nirvana"]

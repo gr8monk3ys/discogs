@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS releases (
     year INTEGER NOT NULL,
     country TEXT,
     formats_json TEXT NOT NULL,
+    artists_json TEXT NOT NULL DEFAULT '[]',
     community_have INTEGER NOT NULL,
     community_want INTEGER NOT NULL,
     community_avg_rating REAL NOT NULL,
@@ -139,3 +140,19 @@ CREATE TABLE IF NOT EXISTS _llm_call_counts (
     day TEXT PRIMARY KEY,
     count INTEGER NOT NULL DEFAULT 0
 );
+
+-- Spotify artists imported from the music-library interchange file. The
+-- resolution to a Discogs artist is cached permanently: it costs an API
+-- call to learn and never changes, so a re-import is free for anything
+-- already resolved. A NULL discogs_artist_id records "we looked and could
+-- not tell", which is deliberately different from "not looked at yet".
+CREATE TABLE IF NOT EXISTS spotify_artists (
+    spotify_artist_id TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    discogs_artist_id INTEGER,
+    liked_track_count INTEGER NOT NULL,
+    match_method      TEXT NOT NULL,
+    resolved_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_spotify_artists_discogs
+    ON spotify_artists(discogs_artist_id);
