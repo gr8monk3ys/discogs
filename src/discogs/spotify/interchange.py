@@ -7,11 +7,12 @@ without an API at all.
 """
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from media_core.export import ExportError, read_export
+from media_core.paths import music_dir
 
 SCHEMA = "music-library/1"
 _LEGACY_PATH = Path("~") / ".spotifyforge" / "music-library.json"
@@ -22,8 +23,7 @@ def default_path() -> Path:
     that file exists, else the path spotifyforge wrote to before the shared
     directory existed. Resolved at call time so tests can point HOME and
     MUSIC_DIR elsewhere."""
-    music_dir = Path(os.environ.get("MUSIC_DIR") or Path.home() / ".music").expanduser()
-    shared = music_dir / "music-library.json"
+    shared = music_dir() / "music-library.json"
     if shared.exists():
         return shared
     return _LEGACY_PATH.expanduser()
@@ -66,27 +66,23 @@ def load(path: Path | None = None) -> dict[str, Any]:
 
     The schema string is asserted rather than trusted: two repos consume
     this file, and a silently-changed shape would show up as wrong
-    recommendations rather than as an error.
+    recommendations rather than as an error. That assertion is
+    `media_core.export.read_export`, the same code the writing repo uses, so
+    the two ends of the contract cannot drift apart.
     """
     target = path or default_path()
     if not target.exists():
+        # Checked here rather than left to read_export: the useful part of this
+        # message is which command in which repo produces the file, and that is
+        # something only this end of the contract knows.
         raise InterchangeError(
             f"No interchange file at {target}. "
             "Run `spotifyforge export library` in the spotify repo first."
         )
     try:
-        data = json.loads(target.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise InterchangeError(f"{target} is not valid JSON: {exc}") from exc
-    if not isinstance(data, dict):
-        raise InterchangeError(f"{target} is not an object")
-
-    schema = data.get("schema")
-    if schema != SCHEMA:
-        raise InterchangeError(
-            f"{target} declares schema {schema!r}; this build reads {SCHEMA!r}."
-        )
-    return data
+        return read_export(target, SCHEMA)
+    except ExportError as exc:
+        raise InterchangeError(str(exc)) from exc
 
 
 def albums(data: dict[str, Any]) -> list[SpotifyAlbum]:

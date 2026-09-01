@@ -4,6 +4,12 @@ version = "0.3.0"
 description = "Discogs collection sync and recommendation framework"
 requires-python = ">=3.11"
 dependencies = [
+    # The name-matching rules, the shared ~/.music path and the export
+    # envelope, extracted from the repos that were keeping copies of them
+    # identical by hand. Pinned to a tag: a change to normalisation is a
+    # change to which release matches which, and it should arrive
+    # deliberately.
+    "media-core @ git+https://github.com/gr8monk3ys/media-core@v0.1.1",
     "python3-discogs-client>=2.7",
     "click>=8.1",
     "rich>=13.0",

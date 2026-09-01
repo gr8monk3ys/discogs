@@ -6,6 +6,12 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# `MUSIC_DIR`, default ~/.music — the directory the collection tools share.
+# Resolving it identically in each of them is the point of sharing the function:
+# a tool that resolved it differently would read a stale file, or none, and
+# report an empty library rather than an error.
+from media_core.paths import music_dir as _default_music_dir
+
 
 def _default_config_path() -> Path:
     return Path.home() / ".discogs" / "config.toml"
@@ -17,11 +23,6 @@ def _default_cache_path() -> Path:
 
 def _default_digests_dir() -> Path:
     return Path.home() / ".discogs" / "digests"
-
-
-def _default_music_dir() -> Path:
-    """The directory the music repos share (`MUSIC_DIR`, default ~/.music)."""
-    return Path(os.environ.get("MUSIC_DIR") or Path.home() / ".music").expanduser()
 
 
 @dataclass
