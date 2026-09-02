@@ -92,6 +92,7 @@ Env overrides: `DISCOGS_TOKEN`, `ANTHROPIC_API_KEY`.
 | `discogs stats [--scope ...] [--top 10]` | Era / style / label distribution of your library (reads the cache, no API calls). |
 | `discogs sync-spotify [--limit 50] [--apply [--yes]]` | Plan wantlist changes from the Spotify library: favourites to add, owned records to prune. Dry-run by default; writes a digest and a run so `apply <id>` / `undo <id>` work. |
 | `discogs export [--out PATH]` | Write the cached collection and wantlist to `$MUSIC_DIR/discogs.json` (default `~/.music/`) for other tools to read. No API calls. |
+| `discogs eval [--holdout 18] [--k 50] [--seed 42] [--offline]` | Measure recommendation quality: hide part of your wantlist, recommend over the rest, report recall@k + MRR. |
 
 ## Spotify → wantlist
 
@@ -106,6 +107,27 @@ proposed for pruning. Every run is dry by default: read the digest under
 `~/.discogs/digests/`, then `discogs apply <id>` for the additions or re-run
 with `--apply` to also remove the prunes. Run `discogs sync --force` first so
 the cache carries each release's artists.
+
+## Evaluating recommendation quality
+
+The recommender's scoring is a weighted blend of nine sub-scores. To check whether
+those weights actually surface things you want, `discogs eval` uses your **wantlist
+as ground truth**: it hides a random sample of it, recommends over everything else,
+and measures how many hidden items resurface.
+
+```bash
+discogs eval                 # online: fills cache gaps as needed (bounded by --budget)
+discogs eval --offline       # cache-only, zero network; reachability limited to cached graph
+```
+
+It reports `recall@k` (hidden items in the top-k), `MRR` (how near the top), and
+`reachable` (hidden items that appeared anywhere — recall can't exceed this, so a low
+`reachable` is a graph-coverage problem, not a scoring one). The eval runs against a
+temp copy of the cache; your real `~/.discogs/cache.db` is never modified. To tune the
+scoring weights, treat `recall@k` as the fitness function and A/B different weight
+vectors against the same `--seed`. The metric itself lives in
+`compute_recall_metrics` (`src/discogs/eval/heldout.py`) — change it there if you
+define "good" differently (e.g. nDCG, or recency-weighted recall).
 
 ## Development
 
