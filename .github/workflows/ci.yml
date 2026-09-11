@@ -1,6 +1,12 @@
 name: CI
 
+# `push: [main]` is deliberate: this repo is PUBLIC (since 2026-05-08), so its
+# Actions minutes are unlimited and the private-repo minute diet (#5) does not
+# apply. Without it the default branch never gets a fresh run and the last
+# status shown for `main` stays whatever it was when a PR last merged.
 on:
+  push:
+    branches: [main]
   pull_request:
 
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
