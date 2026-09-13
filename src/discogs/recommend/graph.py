@@ -97,7 +97,7 @@ def walk_credit_graph(
             seed_release_ids = fetch_artist_releases(
                 client, store, seed.artist_id, top_k=max_releases_per_neighbor,
             )
-        except (HTTPError, json.JSONDecodeError, ValueError):
+        except (HTTPError, json.JSONDecodeError, ValueError, OSError):
             continue
 
         for release_id in seed_release_ids:
@@ -115,7 +115,7 @@ def walk_credit_graph(
 
             try:
                 fetch_release(client, store, release_id)
-            except (HTTPError, json.JSONDecodeError, ValueError):
+            except (HTTPError, json.JSONDecodeError, ValueError, OSError):
                 continue
             credits = store.get_release_credits(release_id)
 
@@ -131,7 +131,7 @@ def walk_credit_graph(
                     neighbor_release_ids = fetch_artist_releases(
                         client, store, neighbor_id, top_k=max_releases_per_neighbor,
                     )
-                except (HTTPError, json.JSONDecodeError, ValueError):
+                except (HTTPError, json.JSONDecodeError, ValueError, OSError):
                     continue
                 for nr_id in neighbor_release_ids:
                     if nr_id in excluded:
