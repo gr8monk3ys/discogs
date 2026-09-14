@@ -6,6 +6,7 @@ import click
 from discogs.cli.commands.apply_cmd import apply_cmd
 from discogs.cli.commands.auth import auth_group
 from discogs.cli.commands.diff_cmd import diff_cmd
+from discogs.cli.commands.eval_cmd import eval_cmd
 from discogs.cli.commands.explain_cmd import explain_cmd
 from discogs.cli.commands.export_cmd import export_cmd
 from discogs.cli.commands.import_spotify_cmd import import_spotify_cmd
@@ -33,6 +34,7 @@ cli.add_command(undo_last_batch_cmd)
 cli.add_command(explain_cmd)
 cli.add_command(diff_cmd)
 cli.add_command(stats_cmd)
+cli.add_command(eval_cmd)
 cli.add_command(import_spotify_cmd)
 cli.add_command(export_cmd)
 cli.add_command(sync_spotify_cmd)

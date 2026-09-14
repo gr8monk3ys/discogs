@@ -53,7 +53,11 @@ def test_full_sync_against_cassette(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     with my_vcr.use_cassette("sync_collection.yaml"):
         result = syncer.sync(scope="both", force=True)
 
-    assert result.collection_synced is not None
-    assert result.collection_synced >= 0
-    assert result.wantlist_synced is not None
+    # The synthetic cassette carries exactly 2 collection items and 2 wantlist items.
+    assert result.collection_synced == 2
+    assert result.wantlist_synced == 2
+
+    # ...and they must actually land in the cache, with the IDs from the cassette.
+    assert store.collection_release_ids() == {1001, 1002}
+    assert store.wantlist_release_ids() == {4001, 4002}
     store.close()
