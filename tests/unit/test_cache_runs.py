@@ -70,10 +70,24 @@ def test_display_id_uses_utc_second(store: CacheStore) -> None:
     assert display_id[4] == "-" and display_id[7] == "-" and display_id[10] == "-"
 
 
-def test_two_runs_in_one_second_get_distinct_display_ids(tmp_path):
-    from discogs.cache.store import CacheStore, init_db
-    init_db(tmp_path / "c.db")
-    store = CacheStore(tmp_path / "c.db")
+def test_two_runs_in_one_second_get_distinct_display_ids(
+    store: CacheStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pin the clock: with the real one, two calls can straddle a second
+    # boundary (CI hit 13:40:04 -> 13:40:05) and never exercise the collision.
+    import discogs.cache.store as store_mod
+
+    frozen = store_mod.datetime(2026, 5, 8, 18, 30, 45, tzinfo=store_mod.UTC)
+
+    class _FrozenDatetime(store_mod.datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return frozen
+
+    monkeypatch.setattr(store_mod, "datetime", _FrozenDatetime)
     _, a = store.start_run({})
     _, b = store.start_run({})
-    assert a != b and b.startswith(a[:17])
+    _, c = store.start_run({})
+    assert a == "2026-05-08-183045"
+    assert b == "2026-05-08-183045-2"
+    assert c == "2026-05-08-183045-3"
