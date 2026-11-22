@@ -132,10 +132,13 @@ define "good" differently (e.g. nDCG, or recency-weighted recall).
 ## Development
 
 ```bash
+make check                    # lint + types + tests, what CI runs
 uv run pytest                 # unit + integration (cassettes)
 uv run ruff check src/ tests/ # lint
 uv run mypy src/              # types
 ```
+
+Optional commit hook: `uvx pre-commit install` (runs ruff and mypy via `.pre-commit-config.yaml`).
 
 To add a runtime dep: `uv add <pkg>`. To add a dev-only dep: `uv add --group dev <pkg>`. Both update `pyproject.toml` and `uv.lock` atomically.
 
