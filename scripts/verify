@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Fast gate that Claude Code runs before a session can finish: what CI runs
+# (and `make check`): locked sync, ruff lint, strict mypy, pytest with the 90%
+# coverage floor. No Discogs account or network calls needed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+uv sync --locked
+uv run ruff check .
+uv run mypy src
+uv run pytest --cov=discogs --cov-report=term-missing --cov-fail-under=90
