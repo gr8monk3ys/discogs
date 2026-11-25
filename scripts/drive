@@ -1,0 +1,193 @@
+#!/usr/bin/env -S uv run --quiet python
+"""Run one feature from docs/feature-map.md against the real CLI.
+
+    scripts/drive <feature>   exit 0 works, 1 broken (reason on stderr),
+                              2 cannot be driven offline (reason on stderr)
+    scripts/drive --all       every feature; exit 1 if any is broken
+    scripts/drive --list      feature names
+
+Each feature runs in a fresh HOME with no cache and no network.
+"""
+
+from __future__ import annotations
+
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+class Broken(Exception):
+    pass
+
+
+class Skipped(Exception):
+    pass
+
+
+@dataclass
+class Env:
+    home: Path
+
+    def run(self, *args: str, stdin: str = "") -> subprocess.CompletedProcess[str]:
+        env = {k: v for k, v in os.environ.items() if k != "MUSIC_DIR"}
+        env["HOME"] = str(self.home)
+        return subprocess.run(
+            ["uv", "run", "--quiet", "discogs", *args],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=ROOT,
+            timeout=120,
+        )
+
+
+def expect(env: Env, args: list[str], code: int, text: str, stdin: str = "") -> None:
+    result = env.run(*args, stdin=stdin)
+    out = result.stdout + result.stderr
+    cmd = "discogs " + " ".join(args)
+    if result.returncode != code:
+        raise Broken(f"`{cmd}` exited {result.returncode}, expected {code}: {out.strip()[-300:]}")
+    if text not in out:
+        raise Broken(f"`{cmd}` output lacks {text!r}: {out.strip()[-300:]}")
+
+
+def login(env: Env) -> None:
+    expect(env, ["auth", "set"], 0, "Saved config to", stdin="token\nuser\n")
+
+
+def auth_set(env: Env) -> None:
+    login(env)
+    config = env.home / ".discogs" / "config.toml"
+    if not config.exists():
+        raise Broken(f"{config} was not written")
+    mode = stat.S_IMODE(config.stat().st_mode)
+    if mode != 0o600:
+        raise Broken(f"{config} has mode {mode:o}, expected 600")
+
+
+def status(env: Env) -> None:
+    login(env)
+    expect(env, ["status"], 0, "never")
+    expect(env, ["status"], 0, "0 / 1500")
+
+
+def stats(env: Env) -> None:
+    login(env)
+    expect(env, ["stats"], 0, "No releases in both. Run `discogs sync` first.")
+
+
+def apply(env: Env) -> None:
+    login(env)
+    expect(env, ["apply", "zzz", "--yes"], 1, "No run found for display id 'zzz'.")
+
+
+def undo(env: Env) -> None:
+    login(env)
+    expect(env, ["undo", "zzz", "--yes"], 1, "No run found")
+
+
+def undo_last_batch(env: Env) -> None:
+    login(env)
+    expect(env, ["undo-last-batch", "--yes"], 1, "nothing to undo")
+
+
+def explain(env: Env) -> None:
+    login(env)
+    expect(env, ["explain", "123"], 0, "Release 123 has never been recommended.")
+
+
+def diff(env: Env) -> None:
+    login(env)
+    expect(env, ["diff", "a", "b"], 1, "No run with display id 'a'.")
+
+
+def eval_(env: Env) -> None:
+    login(env)
+    expect(env, ["eval"], 1, "wantlist has 0 items; need more than holdout=18")
+
+
+def import_spotify(env: Env) -> None:
+    login(env)
+    expect(env, ["import-spotify"], 1, "No interchange file at")
+
+
+def sync_spotify(env: Env) -> None:
+    login(env)
+    expect(env, ["sync-spotify"], 1, "No interchange file at")
+
+
+def export(env: Env) -> None:
+    login(env)
+    expect(env, ["export"], 0, "Exported 0 collection and 0 wantlist item(s)")
+    target = env.home / ".music" / "discogs.json"
+    if not target.exists():
+        raise Broken(f"{target} was not written")
+
+
+def needs_discogs(feature: str) -> Callable[[Env], None]:
+    def skip(env: Env) -> None:
+        raise Skipped(
+            f"{feature} calls the Discogs API and needs a real token; "
+            "no recorded fixtures exist to drive it offline"
+        )
+
+    return skip
+
+
+FEATURES: dict[str, Callable[[Env], None]] = {
+    "auth-set": auth_set,
+    "status": status,
+    "sync": needs_discogs("sync"),
+    "stats": stats,
+    "recommend": needs_discogs("recommend"),
+    "recommend-apply": needs_discogs("recommend --apply"),
+    "apply": apply,
+    "undo": undo,
+    "undo-last-batch": undo_last_batch,
+    "explain": explain,
+    "diff": diff,
+    "eval": eval_,
+    "import-spotify": import_spotify,
+    "sync-spotify": sync_spotify,
+    "export": export,
+}
+
+
+def drive(name: str) -> str:
+    with tempfile.TemporaryDirectory() as home:
+        try:
+            FEATURES[name](Env(Path(home)))
+        except Broken as err:
+            print(f"FAIL {name}: {err}", file=sys.stderr)
+            return "fail"
+        except Skipped as err:
+            print(f"SKIP {name}: {err}", file=sys.stderr)
+            return "skip"
+    print(f"ok   {name}")
+    return "ok"
+
+
+def main(argv: list[str]) -> int:
+    if argv == ["--list"]:
+        print("\n".join(FEATURES))
+        return 0
+    if argv == ["--all"]:
+        results = [drive(name) for name in FEATURES]
+        print(f"{results.count('ok')} ok, {results.count('skip')} skipped, {results.count('fail')} failed")
+        return 1 if "fail" in results else 0
+    if len(argv) == 1 and argv[0] in FEATURES:
+        return {"ok": 0, "fail": 1, "skip": 2}[drive(argv[0])]
+    print(f"usage: scripts/drive <feature>|--all|--list\nfeatures: {', '.join(FEATURES)}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
