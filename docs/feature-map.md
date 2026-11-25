@@ -5,6 +5,8 @@ words. Checks assume a fresh `HOME` with no cache, so they run offline; the
 "with data" half of each needs a real token (`discogs auth set`) and a synced
 cache.
 
+Run a row with `scripts/drive <feature>` (names from `scripts/drive --list`) or all of them with `scripts/drive --all`. Rows that need a real token are reported as skipped, not passed.
+
 | Feature | Where | How to reach it | How to check it works |
 |---|---|---|---|
 | Save my Discogs login | `src/discogs/cli/commands/auth.py` | `discogs auth set` (prompts for token and username) | Prints `Saved config to ~/.discogs/config.toml`; the file exists with mode 600 |
